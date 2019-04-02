@@ -1,0 +1,9 @@
+# VS Code
+.vscode/
+
+# Node
+/**/node_modules/
+
+# WebPack
+/**/dist/
+/**/src/index.js
