@@ -6,6 +6,13 @@ const SPEED = 0.1;
 const SCALE = 2;
 
 
+/**
+ * Find all the (X, Y) points that are inside a circle of radius `radius`.
+ *
+ * @param radius: Radius of the circle.
+ *
+ * @returns: All the points inside the circle.
+ */
 function* circlePoints(radius: number): Iterable<[number, number]> {
   const radiusSqr = radius ** 2;
 
@@ -24,6 +31,9 @@ function* circlePoints(radius: number): Iterable<[number, number]> {
   }
 }
 
+/**
+ * Models a circular liquid superficie.
+ */
 class WaterPlane {
   public mesh: THREE.Mesh;
   private geometry: THREE.Geometry;
@@ -57,6 +67,17 @@ class WaterPlane {
     this.geometry.verticesNeedUpdate = true;
   }
 
+  /**
+   * Builds the plane geometry from scratch.
+   *
+   * The circular plane is approximated to a square grid of points.
+   * The faces of the plane are constructed by splitting each square into
+   * two triangles, this way, each point (x, y) creates two faces:
+   *    - The upper face: The face formed by the triangle on top of the
+   *    diagonal.
+   *    - The lower face: The face formed by the triangle on the bottom of
+   *    the diagonal.
+   */
   private buildGeometry(time: number) {
     this.geometry.vertices = this.points
       .map(([x, y]) => new THREE.Vector3(x, y, this.waveHeight(x, y, time)));
@@ -65,6 +86,7 @@ class WaterPlane {
     this.geometry.faceVertexUvs = [[]];
 
     this.points.forEach(([x, y]) => {
+      // Upper face.
       let res = this.upperFaceFor(x, y);
       if (res != null) {
         let [face, ixs] = res;
@@ -77,6 +99,7 @@ class WaterPlane {
         }))
       }
 
+      // Lower face.
       res = this.lowerFaceFor(x, y);
       if (res != null) {
         let [face, ixs] = res;
@@ -99,12 +122,30 @@ class WaterPlane {
     this.geometry.uvsNeedUpdate = true;
   }
 
+  /**
+   * Mathematically describes the wave that will be formed by the plane.
+   * Is a function z = f(x, y).
+   */
   private waveHeight(x: number, y: number, t: number): number {
     let dist = (SCALE * Math.abs(x) + t * SPEED) ** 2 + (SCALE * Math.abs(y) + t * SPEED) ** 2;
 
     return Math.sin(dist) / (dist + 0.1) + 1.5 * dist * Math.exp(1 - dist);
   }
 
+  /**
+   * Creates the upper face for a point (x, y).
+   * The points of the face are defined as bellow:
+   *
+   * (x, y + DIFF) _________ (x + DIFF,  y + DIFF)
+   *              |        /
+   *              |      /
+   *              |    /
+   *              |  /
+   *              |/
+   *        (x, y)
+   *
+   * The points are walked in the clock-wise direction, starting from (x, y).
+   */
   private upperFaceFor(x: number, y: number): [THREE.Face3, number[]] | null {
     const points: Array<[number, number]> = [
       [x, y],
@@ -115,6 +156,21 @@ class WaterPlane {
     return this.faceFromPoints(points);
   }
 
+  /**
+   * Creates the lower face for a point (x, y).
+   * The points of the face are defined as bellow:
+   *
+   *                         (x + DIFF,  y + DIFF)
+   *                       /|
+   *                     /  |
+   *                   /    |
+   *                 /      |
+   *               /        |
+   *       (x, y) ----------- (x + DIFF, y)
+   *
+   * The points are walked in the clock-wise direction, starting
+   * from (x + DIFF, y + DIFF).
+   */
   private lowerFaceFor(x: number, y: number): [THREE.Face3, number[]] | null {
     const points: Array<[number, number]> = [
       [x + DIFF, y + DIFF],
@@ -125,6 +181,14 @@ class WaterPlane {
     return this.faceFromPoints(points);
   }
 
+  /**
+   * Creates a face from the set of points (x, y) for the vertices.
+   *
+   * @param points: Vertices (x, y) of the face.
+   *
+   * @returns: The face created and the indices of the vertices in the list
+   * of points.
+   */
   private faceFromPoints(points: Array<[number, number]>): [THREE.Face3, number[]] | null {
     let indices = [];
     for (let i = 0; i < points.length; i++) {
