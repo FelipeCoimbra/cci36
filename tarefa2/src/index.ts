@@ -97,15 +97,12 @@ class WaterPlane {
     this.geometry.elementsNeedUpdate = true;
     this.geometry.verticesNeedUpdate = true;
     this.geometry.uvsNeedUpdate = true;
-
-    console.log(this);
   }
 
   private waveHeight(x: number, y: number, t: number): number {
     let dist = (SCALE * Math.abs(x) + t * SPEED) ** 2 + (SCALE * Math.abs(y) + t * SPEED) ** 2;
 
     return Math.sin(dist) / (dist + 0.1) + 1.5 * dist * Math.exp(1 - dist);
-
   }
 
   private upperFaceFor(x: number, y: number): [THREE.Face3, number[]] | null {
@@ -149,6 +146,38 @@ class WaterPlane {
 }
 
 
+class Cup {
+  public mesh: THREE.Group;
+
+  constructor(innerRadius: number, outerRadius: number) {
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+      shininess: 0,
+    });
+
+    this.mesh = new THREE.Group();
+
+    const topRing = new THREE.RingBufferGeometry(innerRadius, outerRadius, 64);
+    this.mesh.add(new THREE.Mesh(topRing, material));
+
+    const innerCylinder = new THREE.CylinderBufferGeometry(innerRadius, 0.8 * innerRadius, 10, 64, 1, true);
+    innerCylinder.rotateX(Math.PI / 2);
+    innerCylinder.translate(0, 0, -5);
+    this.mesh.add(new THREE.Mesh(innerCylinder, material));
+
+    const outerCylinder = new THREE.CylinderBufferGeometry(outerRadius, 0.8 * outerRadius, 10, 64, 1, true);
+    outerCylinder.rotateX(Math.PI / 2);
+    outerCylinder.translate(0, 0, -5);
+    this.mesh.add(new THREE.Mesh(outerCylinder, material));
+
+    const bottom = new THREE.CircleBufferGeometry(0.8 * outerRadius, 64);
+    bottom.translate(0, 0, -10);
+    this.mesh.add(new THREE.Mesh(bottom, material));
+  }
+}
+
+
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 let renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -158,9 +187,12 @@ renderer.setClearColor(0x220000, 1);
 
 document.body.appendChild(renderer.domElement);
 
-let water = new WaterPlane(3);
+let water = new WaterPlane(4.6);
+water.mesh.translateZ(-0.5);
+let cup = new Cup(4.5, 5);
 
 let scene = new THREE.Scene();
+scene.add(cup.mesh);
 scene.add(water.mesh);
 
 var lights = [];
