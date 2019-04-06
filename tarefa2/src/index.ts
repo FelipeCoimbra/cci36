@@ -40,8 +40,8 @@ class WaterPlane {
       emissive: 0x1A3C8E,
       specular: 0x7BC8F2,
       shininess: 100,
-      side: THREE.DoubleSide,
       fog: true,
+      side: THREE.DoubleSide,
       vertexColors: THREE.NoColors,
       flatShading: false,
     });
@@ -120,9 +120,9 @@ class WaterPlane {
 
   private lowerFaceFor(x: number, y: number): [THREE.Face3, number[]] | null {
     const points: Array<[number, number]> = [
-      [x, y],
+      [x + DIFF, y + DIFF],
       [x + DIFF, y],
-      [x + DIFF, y + DIFF]
+      [x, y],
     ]
 
     return this.faceFromPoints(points);
@@ -143,8 +143,6 @@ class WaterPlane {
     if (indices.length !== 3) {
       return null;
     }
-
-    indices = indices.sort();
 
     return [new THREE.Face3(indices[0], indices[1], indices[2]), indices];
   }
