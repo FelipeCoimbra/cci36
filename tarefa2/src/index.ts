@@ -1,8 +1,10 @@
 import THREE from "three";
 import "./controls.js";
 
-const DIFF = 0.05;
-const SPEED = 0.1;
+const DIFF = 0.08;
+const WAVE_SPEED = 0.1;
+
+const ANIMATION_PERIOD = 90;
 const SCALE = 2;
 
 
@@ -15,29 +17,36 @@ const SCALE = 2;
  */
 function* circlePoints(radius: number): Iterable<[number, number]> {
   const radiusSqr = radius ** 2;
-
+  // const points = [];
   for (let x = 0; x < radius; x += DIFF) {
     const maxYabs = Math.sqrt(radiusSqr - x ** 2);
 
     yield [x, 0];
     yield [-x, 0];
-
+    // points.push([[x, 0]]);
+    // points.push([[-x, 0]]);
     for (let y = DIFF; y <= maxYabs; y += DIFF) {
       yield [x, -y];
       yield [x, y];
       yield [-x, -y];
       yield [-x, y];
+      // points.push([x, -y]);
+      // points.push([x, y]);
+      // points.push([-x, -y]);
+      // points.push([-x, y]);
     }
   }
+
+  // return points;
 }
 
 /**
- * Models a circular liquid superficie.
+ * Models a circular liquid surface.
  */
 class WaterPlane {
   public mesh: THREE.Mesh;
   private geometry: THREE.Geometry;
-  private points: Array<[number, number]>;
+  private points: [number, number][];
 
   constructor(radius: number){
     this.geometry = new THREE.Geometry();
@@ -64,7 +73,14 @@ class WaterPlane {
     this.points.forEach(([x, y], ix) =>
       this.geometry.vertices[ix].setZ(this.waveHeight(x, y, time)));
 
+    this.geometry.computeFaceNormals();
+    this.geometry.computeVertexNormals();
+    this.geometry.computeMorphNormals();
+
+    this.geometry.colorsNeedUpdate = true;
+    this.geometry.elementsNeedUpdate = true;
     this.geometry.verticesNeedUpdate = true;
+    this.geometry.uvsNeedUpdate = true;
   }
 
   /**
@@ -124,12 +140,17 @@ class WaterPlane {
 
   /**
    * Mathematically describes the wave that will be formed by the plane.
-   * Is a function z = f(x, y).
+   * Is a function z = f(x, y, t). 
    */
   private waveHeight(x: number, y: number, t: number): number {
-    let dist = (SCALE * Math.abs(x) + t * SPEED) ** 2 + (SCALE * Math.abs(y) + t * SPEED) ** 2;
-
-    return Math.sin(dist) / (dist + 0.1) + 1.5 * dist * Math.exp(1 - dist);
+    const radius = Math.sqrt( x ** 2 + y ** 2);
+    const arrivalTime = radius / 0.2;
+    if ((0.0 < t && t < arrivalTime)) {
+      return 0.0;
+    }
+    
+    let dist = SCALE * (Math.sqrt(x ** 2 + y ** 2) + WAVE_SPEED * t);
+    return Math.sin(dist) / (Math.sqrt(dist) + 0.01) + 1.5 * dist * Math.exp(1 - dist);
   }
 
   /**
@@ -209,7 +230,10 @@ class WaterPlane {
   }
 }
 
-
+/*
+    Cup Object of the scene.
+    Corresponds to two hollow cylinders with a ring element in its top.
+*/
 class Cup {
   public mesh: THREE.Group;
 
@@ -241,23 +265,33 @@ class Cup {
   }
 }
 
+//
+// Instantiate THREE js renderer
+//
 
-let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 let renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x220000, 1);
 
-
 document.body.appendChild(renderer.domElement);
 
-let water = new WaterPlane(4.6);
+//
+// Setup scene
+//
+
+const waterHorizon = 4;
+let water = new WaterPlane(waterHorizon);
 water.mesh.translateZ(-0.5);
-let cup = new Cup(4.5, 5);
+let cup = new Cup(0.95*waterHorizon, 1.1*waterHorizon);
 
 let scene = new THREE.Scene();
 scene.add(cup.mesh);
 scene.add(water.mesh);
+
+//
+//  Add light spots to scene
+//
 
 var lights = [];
 lights[ 0 ] = new THREE.PointLight( 0xffffff, 1, 0 );
@@ -272,17 +306,35 @@ scene.add( lights[ 0 ] );
 scene.add( lights[ 1 ] );
 scene.add( lights[ 2 ] );
 
+//
+// Add ambient light to scene
+//
+
 let amblight = new THREE.AmbientLight(0x444444);
 scene.add(amblight)
 
-camera.position.x = 20;
-camera.position.z = 20;
-camera.position.y = -20;
+//
+// Setup camera
+//
+
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+camera.position.x = 5;
+camera.position.z = 3;
+camera.position.y = -5;
 camera.up = new THREE.Vector3(0,0,1);
 camera.lookAt(new THREE.Vector3(0, 0, 0));
 
+//
+// Create orbit controls to observe the scene
+//
+
 let controls =  new THREE.OrbitControls(camera);
 controls.update();
+
+//
+// Animate
+//
 
 let t = 0;
 
@@ -291,7 +343,8 @@ function animate() {
   controls.update();
 
   water.updateGeometry(t);
-  t += 0.1;
+  t += 0.3;
+  if (t > ANIMATION_PERIOD) t = 0;
   renderer.render(scene, camera);
 }
 
