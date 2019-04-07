@@ -23,17 +23,12 @@ function* circlePoints(radius: number): Iterable<[number, number]> {
 
     yield [x, 0];
     yield [-x, 0];
-    // points.push([[x, 0]]);
-    // points.push([[-x, 0]]);
+
     for (let y = DIFF; y <= maxYabs; y += DIFF) {
       yield [x, -y];
       yield [x, y];
       yield [-x, -y];
       yield [-x, y];
-      // points.push([x, -y]);
-      // points.push([x, y]);
-      // points.push([-x, -y]);
-      // points.push([-x, y]);
     }
   }
 
