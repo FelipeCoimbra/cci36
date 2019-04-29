@@ -11,25 +11,43 @@ renderer.setClearColor(0x220000, 1);
 
 document.body.appendChild(renderer.domElement);
 
-/*!
- *  Wrapper class to game configurations
-*/
-class BattleShipSettings {
-  public boardSize:number;
-
-  constructor() {
-    this.boardSize = 12;
-    this.shipCount = [
-
-    ]
-  }
-}
+const BOARD_SIZE = 10 as const;
+const SHIP_COUNT = [1, 3, 1] as const;
 
 /*!
  *  Game scene manager. Manages game visual aspects (geometries, colors) from a high level API
 */
- class BattleShipScene {
+abstract class BattleShipScene {
+  public abstract changePlayer();
 
+  public abstract selectShip(idx: number);
+  public abstract moveShip(idx: number, to: [number, number]);
+  public abstract settleShip(idx: number);
+  public abstract rotateShip(idx: number);
+
+  public abstract selectPin();
+  public abstract movePin(to: [number, number]);
+  public abstract settlePin();
+}
+
+const enum BSEventKind {
+  /*! An object was selected (a ship or a pin). */
+  SELECT,
+  /*! An object was unselected (a ship or a pin). */
+  UNSELECT,
+  /*! Mouse movent over the grid. */
+  MOVE,
+  /*! Rotate a ship. */
+  ROTATE,
+};
+
+abstract class BattleShipEvent {
+  public kind: BSEventKind;
+}
+
+const enum ORIENTATION {
+  HORIZONTAL,
+  VERTICAL
 }
 
 /*!
@@ -37,12 +55,12 @@ class BattleShipSettings {
  *  game events.
 */
 class BattleShipSensor {
-
+  public sense(scene: BattleShipScene): BattleShipEvent;
 }
 
 // BattleShip game manager
 class BattleShip {
-  private gameSettings:BattleShipSettings;  
+  private gameSettings:BattleShipSettings;
   private gameScene:BattleShipScene;
   private sensor:BattleShipSensor;
   private actor:BattleShipActor;
