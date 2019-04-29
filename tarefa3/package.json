@@ -1,5 +1,5 @@
 {
-  "name": "tarefa2",
+  "name": "tarefa3",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -14,7 +14,7 @@
     "ts-loader": "^5.3.3"
   },
   "devDependencies": {
-    "@types/three": "^0.93.26",
+    "@types/three": "^0.93.31",
     "typescript": "^3.3.3333",
     "webpack": "^4.29.6",
     "webpack-cli": "^3.2.3"
