@@ -14,10 +14,16 @@ document.body.appendChild(renderer.domElement);
 const BOARD_SIZE = 10 as const;
 const SHIP_COUNT = [1, 3, 1] as const;
 
-/*!
- *  Game scene manager. Manages game visual aspects (geometries, colors) from a high level API
+
+/**
+ *  Game scene manager. Manages game visual aspects (geometries, colors) and provides a high level API
 */
-abstract class BattleShipScene {
+class BattleShipScene {
+
+  constructor(scene:THREE.Scene, battle:BattleShipState) {
+
+  }
+
   public abstract changePlayer();
 
   public abstract selectShip(idx: number);
@@ -28,21 +34,22 @@ abstract class BattleShipScene {
   public abstract selectPin();
   public abstract movePin(to: [number, number]);
   public abstract settlePin();
+
 }
 
 const enum BSEventKind {
-  /*! An object was selected (a ship or a pin). */
+  /** An object was selected (a ship or a pin). */
   SELECT,
-  /*! An object was unselected (a ship or a pin). */
+  /** An object was unselected (a ship or a pin). */
   UNSELECT,
-  /*! Mouse movent over the grid. */
+  /** Mouse movent over the grid. */
   MOVE,
-  /*! Rotate a ship. */
+  /** Rotate a ship. */
   ROTATE,
 };
 
 abstract class BattleShipEvent {
-  public kind: BSEventKind;
+  public abstract kind: BSEventKind;
 }
 
 const enum ORIENTATION {
@@ -50,32 +57,199 @@ const enum ORIENTATION {
   VERTICAL
 }
 
-/*!
+/**
  *  Low level event handler. Translates low level interactions such as mouse up to high level
  *  game events.
 */
 class BattleShipSensor {
-  public sense(scene: BattleShipScene): BattleShipEvent;
+  public sense(scene: BattleShipScene): BattleShipEvent | null {
+    return null;
+  }
 }
 
-// BattleShip game manager
+enum PLAYER {
+  P1,
+  P2,
+}
+
+/** Board positions are pairs of integers (x,y). */
+type BoardPosition = [number, number];
+
+/** Pieces may be positioned or not. */
+type PiecePosition = BoardPosition | null
+
+/** 
+ * Ship piece class.
+ * Holds information about a specific Ship object
+ */
+class ShipPiece {
+  public id:number;
+  public size:number;
+  public orientation:ORIENTATION
+  public player:PLAYER;
+  public position:PiecePosition = null;
+
+
+  constructor(idx:number, size:number, player: PLAYER, orientation: ORIENTATION = ORIENTATION.HORIZONTAL) {
+    this.id = idx;
+    this.size = size;
+    this.player = player;
+    this.orientation = orientation;
+  }
+}
+
+enum BoardCellKind {
+  WATER,
+  SHIP,
+}
+
+abstract class BattleShipBoardCell {
+  public abstract cellKind: BoardCellKind;
+  public attacked: boolean = false;
+}
+
+class WaterBoardCell extends BattleShipBoardCell {
+  public cellKind = BoardCellKind.WATER;
+  constructor() {
+    super();
+  }
+}
+
+class ShipBoardCell extends BattleShipBoardCell {
+  public cellKind = BoardCellKind.SHIP;
+  public shipId: number;
+  constructor(shipId: number) {
+    super();
+    this.shipId = shipId;
+  }
+}
+
+class BattleShipBoard {
+  private board: BattleShipBoardCell[][];
+
+  constructor(boardSize:number) {
+    this.board = [] as BattleShipBoardCell[][];
+    for (let i = 0; i < boardSize; i++) {
+      const boardLine = [] as BattleShipBoardCell[];
+      for (let j = 0; j < boardSize; j++) {
+        boardLine.push(new WaterBoardCell());
+      }
+      this.board.push(boardLine);
+    }
+  }
+}
+
+
+/**
+ * Wrapper class for generic game constants.
+ */
+class BattleShipSettings {
+  public boardSize = 10 as const;
+  public shipCountByType = [1, 3, 1];
+  public shipSizeByType = [2, 3, 4];
+}
+
+/**
+ * Stores current game information.
+ * Must be initialized from a Battleship general settings.
+ */
+class BattleShipState {
+  private settings: BattleShipSettings;
+  private ships: ShipPiece[];
+  private currentPlayer: PLAYER;
+  private shipBoard: BattleShipBoard;
+  private pinBoard: BattleShipBoard;
+
+  constructor(settings:BattleShipSettings) {
+    this.settings = settings;
+    this.ships = [];
+    this.setupShips();
+    this.currentPlayer = PLAYER.P1;
+    this.shipBoard = new BattleShipBoard(this.settings.boardSize);
+    this.pinBoard = new BattleShipBoard(this.settings.boardSize);
+  }
+
+  public getSettings(): Readonly<BattleShipSettings> {
+    return this.settings;
+  }
+
+  public getShips(): ReadonlyArray<ShipPiece> {
+    return this.ships;
+  }
+
+  private setupShips() {
+    let id = 0;
+    [PLAYER.P1, PLAYER.P2].forEach(player => {
+      for (let type in this.settings.shipCountByType) 
+      for (let count = 0; count < this.settings.shipCountByType[type]; count++) {
+        this.ships.push(new ShipPiece(id++, this.settings.shipSizeByType[type], player));
+      }
+    });
+  }
+
+}
+
+/**
+ * Class responsible for updating game state.
+ * Created for reasons of decoupling game state from game rules.
+ */
+class BattleShipUpdater {
+  constructor() {
+
+  }
+
+  public update(world:BattleShipState, event:BattleShipEvent | null) {
+    if (event === null) {
+      return;
+    }
+
+
+  }
+}
+
+/**
+ * Actor that changes game view.
+ * This class is responsible for synchronizing the scene with the game through the BattleShipScene
+ * class API.
+ */
+class BattleShipActor {
+  constructor() {
+
+  }
+
+  public sync(sceneState:BattleShipScene, gameState:BattleShipState) {
+
+  }
+}
+
+/**
+ * Battleship game main class
+ */
 class BattleShip {
-  private gameSettings:BattleShipSettings;
+  private gameState:BattleShipState;
+  private updater:BattleShipUpdater;
   private gameScene:BattleShipScene;
   private sensor:BattleShipSensor;
   private actor:BattleShipActor;
-  private gameState:BattleShipState;
 
-  constructor(_scene:THREE.Scene) {
-    this.gameSettings = new BattleShipSettings();
-    this.gameScene = new BattleShipScene(_scene, this.gameSettings);
+  constructor(scene:THREE.Scene) {
+    this.gameState = new BattleShipState(new BattleShipSettings());
+    this.updater = new BattleShipUpdater();
+    this.gameScene = new BattleShipScene(scene, this.gameState);
     this.sensor = new BattleShipSensor();
+    this.actor = new BattleShipActor();
   }
 
+  /**
+   * Game loop update
+   * 1) Generate game events from raw user input
+   * 2) Update game state from game event occurence
+   * 3) Synchronize game view with updated state
+   */
   public update() {
-    const worldEvent = this.sensor.sense(this.gameScene);
-    this.gameState.update(worldEvent);
-    this.actor.link(this.gameState, this.gameScene);
+    const gameEvent = this.sensor.sense(this.gameScene);
+    this.updater.update(this.gameState, gameEvent);
+    this.actor.sync(this.gameScene,this.gameState);
   }
 }
 
