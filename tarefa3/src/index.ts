@@ -20,7 +20,7 @@ const SHIP_COUNT = [1, 3, 1] as const;
 */
 class BattleShipScene {
 
-  constructor(scene:THREE.Scene, battle:BattleShipState) {
+  constructor(scene:THREE.Scene, battle:BattleShipGame) {
 
   }
 
@@ -67,6 +67,9 @@ class BattleShipSensor {
   }
 }
 
+/**
+ * Player identifier
+ */
 enum PLAYER {
   P1,
   P2,
@@ -74,9 +77,6 @@ enum PLAYER {
 
 /** Board positions are pairs of integers (x,y). */
 type BoardPosition = [number, number];
-
-/** Pieces may be positioned or not. */
-type PiecePosition = BoardPosition | null
 
 /** 
  * Ship piece class.
@@ -86,15 +86,21 @@ class ShipPiece {
   public id:number;
   public size:number;
   public orientation:ORIENTATION
-  public player:PLAYER;
-  public position:PiecePosition = null;
+  public position:BoardPosition;
+  public damaged:boolean[];
+  public damage:number;
 
 
-  constructor(idx:number, size:number, player: PLAYER, orientation: ORIENTATION = ORIENTATION.HORIZONTAL) {
+  constructor(idx:number, size:number, orientation: ORIENTATION, position: BoardPosition) {
     this.id = idx;
     this.size = size;
-    this.player = player;
     this.orientation = orientation;
+    this.position = position;
+    this.damaged = []
+    for (let i = 0; i < this.size; i++) {
+      this.damaged.push(false);
+    }
+    this.damage = 0;
   }
 }
 
@@ -127,9 +133,12 @@ class WaterBoardCell extends BattleShipBoardCell {
 class ShipBoardCell extends BattleShipBoardCell {
   public cellKind = BoardCellKind.SHIP;
   public shipId: number;
-  constructor(shipId: number) {
+  public shipPart: number;
+
+  constructor(shipId: number, shipPart: number) {
     super();
     this.shipId = shipId;
+    this.shipPart = shipPart;
   }
 }
 
@@ -148,50 +157,74 @@ class BattleShipBoard {
     this.boardSize = boardSize;
     this.initBoard();
   }
-
+  
+  /**
+   * Adds a ship piece to the board
+   * @param ship Ship piece to add to the board
+   * @throws Error if ship's position is out of board bounds
+   * @throws Error if ship's orientation makes it partially out of board bounds
+   * @throws Error if ship's overlaps with an already settled ship
+   */
   public settleShip(ship:ShipPiece) {
-    if (ship.position === null) {
-      throw new Error(`Ship ${ship.id} of player ${ship.player} has no position.`);
-    }
-
     const x = ship.position[0], y = ship.position[1];
     if (x < 0 || x >= this.boardSize || y < 0 || y > this.boardSize) {
-      throw new Error(`Ship ${ship.id} of player ${ship.player} has invalid position.`);
+      throw new Error(`Ship ${ship.id} position out of board bounds`);
     }
 
     if (ship.orientation === ORIENTATION.HORIZONTAL) {
       if (y + ship.size >= this.boardSize) {
-        throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} out of bounds.`)
+        throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
       for (let pos = y; pos < y + ship.size; pos++) {
         if (this.board[x][pos].cellKind === BoardCellKind.SHIP) {
-          throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} already occupied.`)
+          throw new Error(`Ship ${ship.id} with size ${ship.size} already occupied.`)
         }
       }
 
       for (let pos = y; pos < y + ship.size; pos++) {
         delete this.board[x][pos];
-        this.board[x][pos] = new ShipBoardCell(ship.id);
+        this.board[x][pos] = new ShipBoardCell(ship.id, pos);
       }
     } else if (ship.orientation === ORIENTATION.VERTICAL) {
       if (x + ship.size >= this.boardSize) {
-        throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} out of bounds.`)
+        throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
       for (let pos = x; pos < x + ship.size; pos++) {
         if (this.board[pos][y].cellKind === BoardCellKind.SHIP) {
-          throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} already occupied.`)
+          throw new Error(`Ship ${ship.id} with size ${ship.size} already occupied.`)
         }
       }
 
       for (let pos = x; pos < x + ship.size; pos++) {
         delete this.board[pos][y];
-        this.board[pos][y] = new ShipBoardCell(ship.id);
+        this.board[pos][y] = new ShipBoardCell(ship.id, pos);
       }
     } else {
       // Never reaches
     }
+  }
+
+  /**
+   * Attacks a specific target of the board
+   * @param target Board position to attack
+   * @returns [ID of damaged ship, damaged ship part] or null if no ship was damaged
+   * @throws Error if target is outside board limits
+   * @throws Error if target has already been attacked
+   */
+  public attack(target: BoardPosition): [number, number] | null {
+    const x = target[0], y = target[1];
+    if (x < 0 || y < 0 || x >= this.boardSize || y >= this.boardSize) {
+      throw new Error(`Attack position (${x}, ${y}) out of bounds`);
+    }
+    const cell = this.board[x][y];
+    if (cell.attacked) {
+      throw new Error(`Attack position (${x}, ${y}) already attacked`);
+    }
+    cell.attacked = true;
+    return cell.cellKind === BoardCellKind.SHIP ? [(cell as ShipBoardCell).shipId, (cell as ShipBoardCell).shipPart] 
+    : null;
   }
 
   private initBoard() {
@@ -205,7 +238,6 @@ class BattleShipBoard {
   }
 }
 
-
 /**
  * Wrapper class for generic game constants.
  */
@@ -215,13 +247,83 @@ class BattleShipSettings {
   public shipSizeByType = [2, 3, 4];
 }
 
-class BattleShipPlayerState {
+/**
+ * Stores player-specific game information
+ */
+class BattleShipPlayer {
+  private playerId: PLAYER;
+  private ships: ShipPiece[];
   private shipBoard: BattleShipBoard;
   private pinBoard: BattleShipBoard;
+  private shipCount: number;
 
-  constructor(settings: BattleShipSettings) {
-    this.shipBoard = new BattleShipBoard(settings.boardSize);
-    this.pinBoard = new BattleShipBoard(settings.boardSize);
+  constructor(playerId: PLAYER, shipBoard: BattleShipBoard, pinBoard: BattleShipBoard) {
+    this.playerId = playerId;
+    this.ships = [];
+    this.shipBoard = shipBoard;
+    this.pinBoard = pinBoard;
+    this.shipCount = 0;
+  }
+
+  public getId(): PLAYER {
+    return this.playerId;
+  }
+
+  public getShipCount(): Readonly<number> {
+    return this.shipCount;
+  }
+
+  /**
+   * Adds new ship to the player's ship board
+   * @param size Size of ship
+   * @param orientation Orientation of ship
+   * @param position Position of ship in ship board
+   * @throws
+   */
+  public settleShip(size: number, orientation: ORIENTATION, position: BoardPosition) {
+    const ship = new ShipPiece(this.shipCount, size, orientation, position);
+    this.shipBoard.settleShip(ship);
+    this.ships.push(ship);
+    this.shipCount++;
+  }
+
+  /**
+   * Attacks a position of the player's pin board
+   * @param target Position to attack
+   * @return @see{@link BattleShipBoard#attack}
+   * @throws @see{@link BattleShipBoard#attack}
+   */
+  public attack(target: BoardPosition): [number, number] | null {
+    return this.pinBoard.attack(target);
+  }
+  
+  /**
+   * Grants damage in a specific ship and ship part
+   * @param shipId Id of ship to be damaged
+   * @param part Board position to damage
+   * @returns True if damaged ship was destroyed
+   * @throws Error if ship is not found
+   * @throws Error if ship part is out of ship bounds
+   * @throws Error if ship part is already damaged
+   */
+  public receiveDamage(shipId: number, part: number): boolean {
+    if (shipId < 0 || shipId >= this.ships.length) {
+      throw new Error(`Invalid ship id ${shipId}`);
+    }
+    const ship = this.ships[shipId];
+    if (part < 0 || part >= ship.size) {
+      throw new Error(`Damage location is not within ship limits`);
+    }
+    if (ship.damaged[part]) {
+      throw new Error(`Part ${part} of ship ${shipId} is already damaged`);
+    }
+    ship.damaged[part] = true;
+    ship.damage++;
+    if (ship.damage === ship.size) {
+      this.shipCount--;
+      return true;
+    }
+    return false;
   }
 }
 
@@ -229,54 +331,69 @@ class BattleShipPlayerState {
  * Stores current game information.
  * Must be initialized from a Battleship general settings.
  */
-class BattleShipState {
-  private settings: BattleShipSettings;
-  private ships: ShipPiece[];
-  private currentPlayer: PLAYER;
-  
+class BattleShipGame {
+  private p1: BattleShipPlayer;
+  private p2: BattleShipPlayer;
 
   constructor(settings:BattleShipSettings) {
-    this.settings = settings;
-    this.ships = [];
-    this.setupShips();
-    this.currentPlayer = PLAYER.P1;
+
+    const p1Board = new BattleShipBoard(settings.boardSize);
+    const p2Board = new BattleShipBoard(settings.boardSize);
+    this.p1 = new BattleShipPlayer(PLAYER.P1, p1Board, p2Board);
+    this.p2 = new BattleShipPlayer(PLAYER.P2, p2Board, p1Board);
   }
 
-  public getSettings(): Readonly<BattleShipSettings> {
-    return this.settings;
+  /**
+   * Adds a ship to a specific player in a specified configuration
+   * @param player The player to add a ship
+   * @param shipSize The size of the ship to be added
+   * @param shipOrientation The orientation of the ship to be added
+   * @param shipPosition The board position to settle the ship
+   */
+  public settleShip(player: PLAYER, shipSize: number, shipOrientation: ORIENTATION, shipPosition: BoardPosition) {
+    if (this.p1.getId() === player) {
+      this.p1.settleShip(shipSize, shipOrientation, shipPosition);
+    } else {
+      this.p2.settleShip(shipSize, shipOrientation, shipPosition);
+    }
   }
 
-  public getShips(): ReadonlyArray<ShipPiece> {
-    return this.ships;
-  }
-
-  private setupShips() {
-    let id = 0;
-    [PLAYER.P1, PLAYER.P2].forEach(player => {
-      for (let type in this.settings.shipCountByType) 
-      for (let count = 0; count < this.settings.shipCountByType[type]; count++) {
-        this.ships.push(new ShipPiece(id++, this.settings.shipSizeByType[type], player));
-      }
-    });
+  /**
+   * Executes a player attack in game context
+   * @param attackerId Id of attacking player
+   * @param target Position to attack
+   * @returns true if there are no ships left in the attacked board after attack
+   */
+  public attack(attackerId: PLAYER, target: BoardPosition) {
+    const [attacker, attacked] = attackerId === PLAYER.P1 ? [this.p1, this.p2] : [this.p2, this.p1];
+    const attackReport = attacker.attack(target);
+    if (attackReport !== null) {
+      const [damagedShipId, damagedShipPart] = attackReport;
+      attacked.receiveDamage(damagedShipId, damagedShipPart);
+      return attacked.getShipCount() === 0;
+    }
+    return false;
   }
 
 }
 
 /**
  * Class responsible for updating game state.
- * Created for reasons of decoupling game state from game rules.
+ * Created for decoupling game state update from game rules.
  */
 class BattleShipUpdater {
-  constructor() {
-
+  private currentPlayer: PLAYER;
+  
+  constructor(gameScene: BattleShipScene) {
+    this.currentPlayer = PLAYER.P1;
   }
 
-  public update(world:BattleShipState, event:BattleShipEvent | null) {
+  public update(world:BattleShipGame, event:BattleShipEvent | null) {
     if (event === null) {
       return;
     }
 
-
+    
   }
 }
 
@@ -290,7 +407,7 @@ class BattleShipActor {
 
   }
 
-  public sync(sceneState:BattleShipScene, gameState:BattleShipState) {
+  public sync(sceneState:BattleShipScene, gameState:BattleShipGame) {
 
   }
 }
@@ -299,16 +416,18 @@ class BattleShipActor {
  * Battleship game main class
  */
 class BattleShip {
-  private gameState:BattleShipState;
+  private gameSettings:BattleShipSettings;
+  private gameState:BattleShipGame;
   private updater:BattleShipUpdater;
   private gameScene:BattleShipScene;
   private sensor:BattleShipSensor;
   private actor:BattleShipActor;
 
   constructor(scene:THREE.Scene) {
-    this.gameState = new BattleShipState(new BattleShipSettings());
-    this.updater = new BattleShipUpdater();
+    this.gameSettings = new BattleShipSettings();
+    this.gameState = new BattleShipGame(this.gameSettings);
     this.gameScene = new BattleShipScene(scene, this.gameState);
+    this.updater = new BattleShipUpdater(this.gameScene);
     this.sensor = new BattleShipSensor();
     this.actor = new BattleShipActor();
   }
