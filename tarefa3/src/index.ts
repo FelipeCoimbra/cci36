@@ -103,11 +103,17 @@ enum BoardCellKind {
   SHIP,
 }
 
+/**
+ * Generic board cell
+ */
 abstract class BattleShipBoardCell {
   public abstract cellKind: BoardCellKind;
   public attacked: boolean = false;
 }
 
+/**
+ * Board cell filled with water
+ */
 class WaterBoardCell extends BattleShipBoardCell {
   public cellKind = BoardCellKind.WATER;
   constructor() {
@@ -115,6 +121,9 @@ class WaterBoardCell extends BattleShipBoardCell {
   }
 }
 
+/**
+ * Board cell occupied by a ship
+ */
 class ShipBoardCell extends BattleShipBoardCell {
   public cellKind = BoardCellKind.SHIP;
   public shipId: number;
@@ -124,14 +133,71 @@ class ShipBoardCell extends BattleShipBoardCell {
   }
 }
 
+/**
+ * Battleship board representation. This representations works both as a pin board
+ * and as a ship board.
+ * Initially filled with water, cells are modified to ship cells when a ship is settled
+ * on them. 
+ */
 class BattleShipBoard {
   private board: BattleShipBoardCell[][];
+  private boardSize: number;
 
   constructor(boardSize:number) {
     this.board = [] as BattleShipBoardCell[][];
-    for (let i = 0; i < boardSize; i++) {
+    this.boardSize = boardSize;
+    this.initBoard();
+  }
+
+  public settleShip(ship:ShipPiece) {
+    if (ship.position === null) {
+      throw new Error(`Ship ${ship.id} of player ${ship.player} has no position.`);
+    }
+
+    const x = ship.position[0], y = ship.position[1];
+    if (x < 0 || x >= this.boardSize || y < 0 || y > this.boardSize) {
+      throw new Error(`Ship ${ship.id} of player ${ship.player} has invalid position.`);
+    }
+
+    if (ship.orientation === ORIENTATION.HORIZONTAL) {
+      if (y + ship.size >= this.boardSize) {
+        throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} out of bounds.`)
+      }
+
+      for (let pos = y; pos < y + ship.size; pos++) {
+        if (this.board[x][pos].cellKind === BoardCellKind.SHIP) {
+          throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} already occupied.`)
+        }
+      }
+
+      for (let pos = y; pos < y + ship.size; pos++) {
+        delete this.board[x][pos];
+        this.board[x][pos] = new ShipBoardCell(ship.id);
+      }
+    } else if (ship.orientation === ORIENTATION.VERTICAL) {
+      if (x + ship.size >= this.boardSize) {
+        throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} out of bounds.`)
+      }
+
+      for (let pos = x; pos < x + ship.size; pos++) {
+        if (this.board[pos][y].cellKind === BoardCellKind.SHIP) {
+          throw new Error(`Ship ${ship.id} with size ${ship.size} of player ${ship.player} already occupied.`)
+        }
+      }
+
+      for (let pos = x; pos < x + ship.size; pos++) {
+        delete this.board[pos][y];
+        this.board[pos][y] = new ShipBoardCell(ship.id);
+      }
+    } else {
+      // Never reaches
+    }
+  }
+
+  private initBoard() {
+    for (let i = 0; i < this.boardSize; i++) {
       const boardLine = [] as BattleShipBoardCell[];
-      for (let j = 0; j < boardSize; j++) {
+      for (let j = 0; j < this.boardSize; j++) {
         boardLine.push(new WaterBoardCell());
       }
       this.board.push(boardLine);
@@ -149,6 +215,16 @@ class BattleShipSettings {
   public shipSizeByType = [2, 3, 4];
 }
 
+class BattleShipPlayerState {
+  private shipBoard: BattleShipBoard;
+  private pinBoard: BattleShipBoard;
+
+  constructor(settings: BattleShipSettings) {
+    this.shipBoard = new BattleShipBoard(settings.boardSize);
+    this.pinBoard = new BattleShipBoard(settings.boardSize);
+  }
+}
+
 /**
  * Stores current game information.
  * Must be initialized from a Battleship general settings.
@@ -157,16 +233,13 @@ class BattleShipState {
   private settings: BattleShipSettings;
   private ships: ShipPiece[];
   private currentPlayer: PLAYER;
-  private shipBoard: BattleShipBoard;
-  private pinBoard: BattleShipBoard;
+  
 
   constructor(settings:BattleShipSettings) {
     this.settings = settings;
     this.ships = [];
     this.setupShips();
     this.currentPlayer = PLAYER.P1;
-    this.shipBoard = new BattleShipBoard(this.settings.boardSize);
-    this.pinBoard = new BattleShipBoard(this.settings.boardSize);
   }
 
   public getSettings(): Readonly<BattleShipSettings> {
