@@ -16,7 +16,8 @@ const SHIP_COUNT = [1, 3, 1] as const;
 
 
 /**
- *  Game scene manager. Manages game visual aspects (geometries, colors) and provides a high level API
+ *  Game scene manager. Manages game visual aspects (geometries, colors) and provides a high level interface
+ * for view control.
 */
 class BattleShipScene {
 
@@ -243,6 +244,7 @@ class BattleShipBoard {
  */
 class BattleShipSettings {
   public boardSize = 10 as const;
+  public playerShipCount = 5 as const;
   public shipCountByType = [1, 3, 1];
   public shipSizeByType = [2, 3, 4];
 }
@@ -335,7 +337,7 @@ class BattleShipGame {
   private p1: BattleShipPlayer;
   private p2: BattleShipPlayer;
 
-  constructor(settings:BattleShipSettings) {
+  constructor(settings:Readonly<BattleShipSettings>) {
 
     const p1Board = new BattleShipBoard(settings.boardSize);
     const p2Board = new BattleShipBoard(settings.boardSize);
@@ -374,36 +376,84 @@ class BattleShipGame {
     }
     return false;
   }
-
 }
+
+enum BattleShipStateKind {
+  SHIP_CRAFT,
+}
+
+/**
+ * Class to represent a generic game state
+ */
+interface AbstractBattleShipState {
+  kind: BattleShipStateKind;
+}
+
+class ShipCraftState implements AbstractBattleShipState {
+  public kind:BattleShipStateKind.SHIP_CRAFT;
+  private shipSizeSequence: number[];
+  private shipSizeIterator: number;
+
+  constructor(gameSettings: BattleShipSettings) {
+    this.kind = BattleShipStateKind.SHIP_CRAFT;
+    this.shipSizeSequence = this.buildShipSizeSequence(gameSettings);
+    this.shipSizeIterator = 0;
+  }
+
+  public nextShipSize(): number {
+    const size = this.shipSizeSequence[this.shipSizeIterator++];
+    this.shipSizeIterator %= this.shipSizeSequence.length;  // Iterate circularly in sequence
+    return size;
+  }
+
+  public getShipSizeIterator(): number {
+    return this.shipSizeIterator;
+  }
+
+  private buildShipSizeSequence(gameSettings: BattleShipSettings): number[] {
+    const sizeSequence = [] as number[];
+    for (let shipType in gameSettings.shipCountByType) {
+      for (let shipTypeCount = 0; shipTypeCount < gameSettings.shipCountByType[shipType]; shipTypeCount++) {
+        sizeSequence.push(gameSettings.shipSizeByType[shipType]);
+      }
+    }
+    return sizeSequence;
+  }
+}
+
+type BattleShipState = ShipCraftState;
 
 /**
  * Class responsible for updating game state.
  * Created for decoupling game state update from game rules.
  */
-class BattleShipUpdater {
+class BattleShipRules {
   private currentPlayer: PLAYER;
-  
-  constructor(gameScene: BattleShipScene) {
+  private gameState: BattleShipState;
+  constructor(gameSettings: BattleShipSettings) {
     this.currentPlayer = PLAYER.P1;
+    this.gameState = new ShipCraftState(gameSettings);
   }
 
-  public update(world:BattleShipGame, event:BattleShipEvent | null) {
+  public getState(): Readonly<BattleShipState> {
+    return this.gameState;
+  }
+
+  public apply(game:BattleShipGame, event:BattleShipEvent | null) {
     if (event === null) {
       return;
     }
 
-    
+    this.gameState.apply(event);
   }
 }
 
 /**
- * Actor that changes game view.
- * This class is responsible for synchronizing the scene with the game through the BattleShipScene
- * class API.
+ * Class is responsible for synchronizing the scene with the game through the BattleShipScene API.
+ * Translates game-level events to view events.
  */
-class BattleShipActor {
-  constructor() {
+class BattleShipPresenter {
+  constructor(gameState:AbstractBattleShipState) {
 
   }
 
@@ -416,32 +466,33 @@ class BattleShipActor {
  * Battleship game main class
  */
 class BattleShip {
-  private gameSettings:BattleShipSettings;
-  private gameState:BattleShipGame;
-  private updater:BattleShipUpdater;
-  private gameScene:BattleShipScene;
+  private settings:Readonly<BattleShipSettings>;
+  private game:BattleShipGame;
+  private rules:BattleShipRules;
+  private view:BattleShipScene;
   private sensor:BattleShipSensor;
-  private actor:BattleShipActor;
+  private viewPresenter:BattleShipPresenter;
 
   constructor(scene:THREE.Scene) {
-    this.gameSettings = new BattleShipSettings();
-    this.gameState = new BattleShipGame(this.gameSettings);
-    this.gameScene = new BattleShipScene(scene, this.gameState);
-    this.updater = new BattleShipUpdater(this.gameScene);
+    this.settings = new BattleShipSettings();
     this.sensor = new BattleShipSensor();
-    this.actor = new BattleShipActor();
+
+    this.game = new BattleShipGame(this.settings);
+    this.rules = new BattleShipRules(this.settings);
+    this.view = new BattleShipScene(scene, this.game);
+    this.viewPresenter = new BattleShipPresenter(this.rules.getState());
   }
 
   /**
    * Game loop update
    * 1) Generate game events from raw user input
-   * 2) Update game state from game event occurence
+   * 2) Update game state from game event occurence following game rules
    * 3) Synchronize game view with updated state
    */
   public update() {
-    const gameEvent = this.sensor.sense(this.gameScene);
-    this.updater.update(this.gameState, gameEvent);
-    this.actor.sync(this.gameScene,this.gameState);
+    const userEvent = this.sensor.sense(this.view);
+    this.rules.apply(this.game, userEvent);
+    this.viewPresenter.sync(this.view);
   }
 }
 
