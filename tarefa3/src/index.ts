@@ -16,7 +16,26 @@ const BOARD_SIZE = 10 as const;
 const SHIP_COUNT = [1, 3, 1] as const;
 const ANIMATION_STEP = 60 as const;
 
-const lastItem = <T>(xs: {0: T} & T[]): T => xs[xs.length - 1];
+const lastItem = <T>(xs: T[]): T => xs[xs.length - 1];
+
+//class BSAnimation {
+//  constructor(private update: () => boolean,
+//              private finish: () => void) {
+//    this.trigger();
+//  }
+//
+//  private trigger() {
+//    setTimeout(() => this.run(), 16);
+//  }
+//
+//  private run() {
+//    if (this.update()) {
+//      this.trigger();
+//    } else {
+//      this.finish();
+//    }
+//  }
+//}
 
 /**
  *  Game scene manager. Manages game visual aspects (geometries, colors) and provides a high level interface
@@ -32,12 +51,14 @@ class BattleShipScene {
   public player1 = new THREE.Group();
   public player2 = new THREE.Group();
 
+  //private moveAnimation?: BSAnimation;
+
   get ships(): {0: THREE.Object3D} & THREE.Object3D[] {
     return this.shipsGroup.children as any;
   }
 
-  get pins(): {0: THREE.Object3D} & THREE.Object3D[] {
-    return this.pinsGroup.children as any;
+  get pins(): THREE.Object3D[] {
+    return this.pinsGroup.children;
   }
 
   private firstPlayer: boolean = true;
@@ -54,69 +75,82 @@ class BattleShipScene {
   public changePlayer(): void {
     this.firstPlayer = !this.firstPlayer;
 
-    const rotation = new THREE.Matrix4();
-    rotation.makeRotationZ(Math.PI / ANIMATION_STEP);
+    //const rotation = new THREE.Matrix4();
+    //rotation.makeRotationZ(Math.PI / ANIMATION_STEP);
 
-    this.animate(() => {
-      rotation.multiplyVector3(camera.position);
-      camera.lookAt(new THREE.Vector3(0, 0, 0));
-    });
+    //this.animate(() => {
+    //  rotation.multiplyVector3(camera.position);
+    //  camera.lookAt(new THREE.Vector3(0, 0, 0));
+    //});
+
+    const rotation = new THREE.Matrix4();
+    rotation.makeRotationZ(Math.PI);
+    rotation.multiplyVector3(camera.position);
+    camera.lookAt(new THREE.Vector3(0, 0, 0));
   }
 
   public selectShip(): void {
     const ship = lastItem(this.ships);
 
-    const delta = 2 / ANIMATION_STEP;
-    this.animate(() => ship.position.z += delta);
+    //const delta = 2 / ANIMATION_STEP;
+    //this.animate(() => ship.position.z += delta);
+    ship.position.z += 2;
   }
 
   public settleShip(): void {
     const ship = lastItem(this.ships);
 
-    const delta = 2 / ANIMATION_STEP;
-    this.animate(() => ship.position.z -= delta);
+    //const delta = 2 / ANIMATION_STEP;
+    //this.animate(() => ship.position.z -= delta);
+    ship.position.z -= 2;
   }
 
   public moveShip(to: [number, number]): void {
     const ship = lastItem(this.ships);
     const finalPos = this.gridPosition(to);
 
-    let deltaPos = new THREE.Vector3();
-    deltaPos.subVectors(finalPos, ship.position);
-    deltaPos.divideScalar(ANIMATION_STEP);
+    //let deltaPos = new THREE.Vector3();
+    //deltaPos.subVectors(finalPos, ship.position);
+    //deltaPos.divideScalar(ANIMATION_STEP);
 
-    this.animate(() => ship.position.add(deltaPos));
+    //this.animate(() => ship.position.add(deltaPos));
+
+    ship.position.copy(finalPos);
   }
 
   public rotateShip(): void {
     const ship = lastItem(this.ships);
 
-    this.animate(() => ship.rotateZ(Math.PI / 120));
+    //this.animate(() => ship.rotateZ(Math.PI / 120));
+    ship.rotateZ(Math.PI / 2);
   }
 
   public selectPin(): void {
     const pin = lastItem(this.pins);
 
-    const delta = 2 / ANIMATION_STEP;
-    this.animate(() => pin.position.z += delta);
+    //const delta = 2 / ANIMATION_STEP;
+    //this.animate(() => pin.position.z += delta);
+    pin.position.z += 2;
   }
 
   public movePin(to: [number, number]): void {
     const pin = lastItem(this.pins);
     const finalPos = this.barrierGridPosition(to);
 
-    let deltaPos = new THREE.Vector3();
-    deltaPos.subVectors(finalPos, pin.position);
-    deltaPos.divideScalar(ANIMATION_STEP);
+    //let deltaPos = new THREE.Vector3();
+    //deltaPos.subVectors(finalPos, pin.position);
+    //deltaPos.divideScalar(ANIMATION_STEP);
 
-    this.animate(() => pin.position.add(deltaPos));
+    //this.animate(() => pin.position.add(deltaPos));
+    pin.position.copy(finalPos);
   }
 
   public settlePin(): void {
     const pin = lastItem(this.pins);
 
-    const delta = 2 / ANIMATION_STEP;
-    this.animate(() => pin.position.z -= delta);
+    //const delta = 2 / ANIMATION_STEP;
+    //this.animate(() => pin.position.z -= delta);
+    pin.position.z -= 2;
   }
 
   public makeShip(length: 2 | 3 | 4): void {
@@ -325,18 +359,18 @@ class BattleShipScene {
     return barGridPos;
   }
 
-  private animate(animation: () => void): void {
-    let steps = ANIMATION_STEP;
+  //private animate(animation: () => void): void {
+  //  let steps = ANIMATION_STEP;
 
-    const animContinuation = () => {
-      steps--;
-      animation();
+  //  const animContinuation = () => {
+  //    steps--;
+  //    animation();
 
-      if (steps) setTimeout(animContinuation, 8);
-    };
+  //    if (steps) setTimeout(animContinuation, 8);
+  //  };
 
-    animContinuation();
-  }
+  //  animContinuation();
+  //}
 }
 
 const enum BSEventKind {
