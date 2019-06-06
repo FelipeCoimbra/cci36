@@ -23,8 +23,8 @@ const lastItem = <T>(xs: {0: T} & T[]): T => xs[xs.length - 1];
  * for view control.
 */
 class BattleShipScene {
-  private static P1BarrierGridPosition = new THREE.Vector3(-2, -1.26, 7);
-  private static P1GridPosition = new THREE.Vector3(-2, -5.25, -0.24);
+  private static P1BarrierGridPosition = new THREE.Vector3(-4, -1.01, 1.75);
+  private static P1GridPosition = new THREE.Vector3(-4, -10.75, -0.49);
 
   public shipsGroup: THREE.Group;
   public pinsGroup: THREE.Group;
@@ -153,18 +153,15 @@ class BattleShipScene {
 
   public locationInGrid(pos: THREE.Vector3): [number, number] | null {
     const currentGridPos = new THREE.Vector3()
-      .addVectors(this.currentGrid().position, this.currentPlayer().position);
-
-    console.log(`Receive position: ${pos.x},${pos.y},${pos.z}, will match with grid: ${currentGridPos.x},${currentGridPos.y},${currentGridPos.z}`);
-    let deltaPos = new THREE.Vector3()
-      .subVectors(pos, currentGridPos)
+      .subVectors(pos, this.currentPlayer().position)
+      .sub(this.currentGrid().position)
       .multiplyScalar(BOARD_SIZE / 9)
-      .floor();
+      .subScalar(0.5)
+      .ceil();
 
-    const x = deltaPos.x;
-    const y = deltaPos.y;
+    const x = Math.abs(currentGridPos.x - (this.firstPlayer ? 0 : 9));
+    const y = Math.abs(currentGridPos.y - (this.firstPlayer ? 0 : 24));
 
-    console.log(`x=${x} y=${y}`);
     if (x >= 0 && x < 10 && y >= 0 && y < 10)
       return [Math.floor(x), Math.floor(y)];
     else
@@ -172,14 +169,18 @@ class BattleShipScene {
   }
 
   public locationInBarrierGrid(pos: THREE.Vector3): [number, number] | null {
-    let deltaPos = new THREE.Vector3();
-    deltaPos.subVectors(pos, BattleShipScene.P1BarrierGridPosition);
-    deltaPos.multiplyScalar(BOARD_SIZE / 9);
+    let currentGridPos = new THREE.Vector3()
+      .subVectors(pos, this.currentPlayer().position)
+      .sub(this.currentGrid().position)
+      .multiplyScalar(BOARD_SIZE / 9);
 
-    const z = Math.abs(deltaPos.z);
-    const x = Math.abs(deltaPos.x);
+    currentGridPos.x -= 0.5;
+    currentGridPos = currentGridPos.ceil();
 
-    if (z >= 0 && x >= 9)
+    const z = Math.abs(currentGridPos.z - 4);
+    const x = Math.abs(currentGridPos.x - (this.firstPlayer ? 0 : 9));
+
+    if (z >= 0 && z < 10 && x >= 0 && x < 10)
       return [Math.floor(z), Math.floor(x)];
     else
       return null;
@@ -190,15 +191,11 @@ class BattleShipScene {
   }
 
   public currentGrid(): THREE.Object3D {
-    const player = this.firstPlayer ? this.player1 : this.player2;
-
-    return player.children[1];
+    return this.currentPlayer().children[1];
   }
 
   public currentBarrierGrid(): THREE.Mesh {
-    const player = this.firstPlayer ? this.player1 : this.player2;
-
-    return player.children[3] as THREE.Mesh;
+    return this.currentPlayer().children[3] as THREE.Mesh;
   }
   private makeBoard(): void {
     const material1 = new THREE.MeshPhongMaterial({
@@ -289,7 +286,7 @@ class BattleShipScene {
           new THREE.PlaneBufferGeometry(size, size),
           ((i + j) & 1) === 0 ? black : white
         );
-        mesh.position.copy(this.gridPosition([i, j]));
+        mesh.position.copy(new THREE.Vector3(9 / BOARD_SIZE * i, 9 / BOARD_SIZE * j));
 
         grid.add(mesh);
       }
@@ -406,9 +403,9 @@ class BattleShipSensor {
   private selecting = false;
 
   constructor(private scene: BattleShipScene) {
-    window.addEventListener('mousemove', eve => this.toMoveEvent(eve), false);
-    window.addEventListener('mouseup', eve => this.mouseUpEvent(eve), false);
-    window.addEventListener('mousedown', eve => this.mouseDownEvent(eve), false);
+    document.addEventListener('mousemove', eve => this.toMoveEvent(eve), false);
+    document.addEventListener('mouseup', () => this.mouseUpEvent(), false);
+    document.addEventListener('mousedown', eve => this.mouseDownEvent(eve), false);
   }
 
   private toMoveEvent(event: MouseEvent): void {
@@ -423,7 +420,7 @@ class BattleShipSensor {
       const intersectionPoint = intersect.point.add(intersect.face!.normal);
       const pos = this.scene.locationInGrid(intersectionPoint);
       if (pos) {
-        console.log(`Emitting bsmoveevent event over SHIP_GRID in ${pos}`);
+        console.log(`Emitting BSMoveEvent over SHIP_GRID in ${pos}`);
         //this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.SHIP_GRID));
       }
     } else {
@@ -434,49 +431,43 @@ class BattleShipSensor {
         const intersectionPoint = intersect.point.add(intersect.face!.normal);
         const pos = this.scene.locationInBarrierGrid(intersectionPoint);
         if (pos) {
-          console.log(`Emitting bsmoveevent event over SHIP_GRID in ${pos}`);
-          //this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.SHIP_GRID));
+          console.log(`Emitting BSMoveEvent over PIN_GRID in ${pos}`);
+          //this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.PIN_GRID));
         }
       }
     }
   }
 
-  private mouseUpEvent(event: MouseEvent): void {
+  private mouseUpEvent(): void {
+    if (this.selecting && this.unselectHandler) {
+      this.selecting = false;
+      console.log("Emitting BSUnselectEvent");
+      //this.unselectHandler(new BSUnselectEvent);
+    }
+  }
+
+  private mouseDownEvent(event: MouseEvent): void {
     this.raycaster.setFromCamera({
       x: (event.clientX / window.innerWidth) * 2 - 1,
       y: - (event.clientY / window.innerHeight) * 2 + 1,
     }, camera);
 
-    switch (event.button) {
-      case 0:
-        //if (!this.selectHandler) return;
-
-        const currentShip = this.scene.shipsGroup.children[this.scene.shipsGroup.children.length-1];
-        if (this.raycaster.intersectObject(currentShip).length === 0) {
-          const currentPin = this.scene.pinsGroup.children[this.scene.shipsGroup.children.length-1];
-          if (!currentPin || this.raycaster.intersectObject(currentPin).length === 0) return;
-        }
-
-        console.log("Emitting selecting");
-        this.selecting = true;
-        //return this.selectHandler(new BSSelectEvent);
+    const currentShip = this.scene.ships[this.scene.ships.length - 1];
+    if (this.raycaster.intersectObject(currentShip).length === 0) {
+      const currentPin = this.scene.pins[this.scene.pins.length - 1];
+      if (!currentPin || this.raycaster.intersectObject(currentPin).length === 0) return;
     }
-  }
 
-  private mouseDownEvent(event: MouseEvent): void {
+
     switch (event.button) {
       case 0:
-        if (!this.selectHandler) return;
+        console.log("Emitting BSSelectEvent");
         this.selecting = true;
-        return this.selectHandler(new BSSelectEvent);
+        return //this.selectHandler(new BSSelectEvent);
       case 2:
-        if (!this.rotateHandler) return;
-        return this.rotateHandler(new BSRotateEvent);
-      default:
-        if (this.selecting && this.unselectHandler) {
-          this.selecting = false;
-          this.unselectHandler(new BSUnselectEvent);
-        }
+        console.log("Emitting BSRotateEvent");
+        event.preventDefault();
+        return //this.rotateHandler(new BSRotateEvent);
     }
   }
 }
