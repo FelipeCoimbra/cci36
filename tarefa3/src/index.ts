@@ -334,7 +334,7 @@ class BattleShipScene {
       steps--;
       animation();
 
-      if (steps) setTimeout(animContinuation, 16);
+      if (steps) setTimeout(animContinuation, 8);
     };
 
     animContinuation();
@@ -403,9 +403,10 @@ class BattleShipSensor {
   private selecting = false;
 
   constructor(private scene: BattleShipScene) {
-    document.addEventListener('mousemove', eve => this.toMoveEvent(eve), false);
-    document.addEventListener('mouseup', () => this.mouseUpEvent(), false);
-    document.addEventListener('mousedown', eve => this.mouseDownEvent(eve), false);
+    document.onmousemove = e => this.toMoveEvent(e);
+    document.onmouseup = () => this.mouseUpEvent();
+    document.onmousedown = e => this.mouseDownEvent(e);
+    document.oncontextmenu = () => false;
   }
 
   private toMoveEvent(event: MouseEvent): void {
@@ -439,7 +440,7 @@ class BattleShipSensor {
   }
 
   private mouseUpEvent(): void {
-    if (this.selecting && this.unselectHandler) {
+    if (this.selecting) {
       this.selecting = false;
       console.log("Emitting BSUnselectEvent");
       //this.unselectHandler(new BSUnselectEvent);
