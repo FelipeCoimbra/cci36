@@ -373,6 +373,12 @@ class BSMoveEvent extends BattleShipEvent {
   constructor(public to: [number, number], public loc: BSMoveLoc) {
     super();
   }
+
+  public equals(other: BSMoveEvent): boolean {
+    return this.to[0] === other.to[0]
+      && this.to[1] === other.to[1]
+      && this.loc === other.loc;
+  }
 }
 
 class BSRotateEvent extends BattleShipEvent {
@@ -399,28 +405,29 @@ class BattleShipSensor {
 
   private raycaster = new THREE.Raycaster();
   private selecting = false;
+  private lastMoveEvent?: BSMoveEvent;
 
   constructor(private scene: BattleShipScene) {
-    document.onmousemove = e => this.toMoveEvent(e);
+    document.onmousemove = e => this.moveEvent(e);
     document.onmouseup = () => this.mouseUpEvent();
     document.onmousedown = e => this.mouseDownEvent(e);
     document.oncontextmenu = () => false;
   }
 
-  private toMoveEvent(event: MouseEvent): void {
+  private moveEvent(event: MouseEvent): void {
     this.raycaster.setFromCamera({
       x: (event.clientX / window.innerWidth) * 2 - 1,
       y: - (event.clientY / window.innerHeight) * 2 + 1,
     }, camera);
 
+    let nextEvent: BSMoveEvent | undefined;
     let gridObjects = this.scene.currentGrid().children;
     let [intersect] = this.raycaster.intersectObjects(gridObjects);
     if (intersect) {
       const intersectionPoint = intersect.point.add(intersect.face!.normal);
       const pos = this.scene.locationInGrid(intersectionPoint);
       if (pos) {
-        console.log(`Emitting BSMoveEvent over SHIP_GRID in ${pos}`);
-        //this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.SHIP_GRID));
+        nextEvent = new BSMoveEvent(pos, BSMoveLoc.SHIP_GRID);
       }
     } else {
       gridObjects = this.scene.currentBarrierGrid().children;
@@ -430,18 +437,27 @@ class BattleShipSensor {
         const intersectionPoint = intersect.point.add(intersect.face!.normal);
         const pos = this.scene.locationInBarrierGrid(intersectionPoint);
         if (pos) {
-          console.log(`Emitting BSMoveEvent over PIN_GRID in ${pos}`);
-          //this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.PIN_GRID));
+          nextEvent = new BSMoveEvent(pos, BSMoveLoc.PIN_GRID);
         }
       }
+    }
+
+    if (nextEvent) {
+      if (this.lastMoveEvent && nextEvent.equals(this.lastMoveEvent)) {
+        return
+      }
+
+      this.lastMoveEvent = nextEvent;
+      console.log(`Emitting BSMoveEvent over ${nextEvent.loc} in ${nextEvent.to}`);
+      if (this.moveHandler) this.moveHandler(nextEvent);
     }
   }
 
   private mouseUpEvent(): void {
-    if (this.selecting) {
+    if (this.selecting && this.unselectHandler) {
       this.selecting = false;
       console.log("Emitting BSUnselectEvent");
-      //this.unselectHandler(new BSUnselectEvent);
+      this.unselectHandler(new BSUnselectEvent);
     }
   }
 
@@ -460,13 +476,16 @@ class BattleShipSensor {
 
     switch (event.button) {
       case 0:
+        if (!this.selectHandler) return;
+
         console.log("Emitting BSSelectEvent");
         this.selecting = true;
-        return //this.selectHandler(new BSSelectEvent);
+        return this.selectHandler(new BSSelectEvent);
       case 2:
+        if (!this.rotateHandler) return;
+
         console.log("Emitting BSRotateEvent");
-        event.preventDefault();
-        return //this.rotateHandler(new BSRotateEvent);
+        return this.rotateHandler(new BSRotateEvent);
     }
   }
 }
@@ -806,7 +825,7 @@ enum BattleShipStateKind {
 abstract class AbstractBattleShipState {
   public abstract kind: BattleShipStateKind; // Game state kind
   public abstract player: PLAYER; // Current active player
-  
+
   public abstract clone(): AbstractBattleShipState;
 }
 
@@ -814,7 +833,7 @@ abstract class AbstractBattleShipState {
  * Class that represents the moment of the game where players place their ships
  */
 class ShipCraftState implements AbstractBattleShipState {
-  public kind:BattleShipStateKind.SHIP_CRAFTING;
+  public kind: BattleShipStateKind.SHIP_CRAFTING;
   public player: PLAYER;
   public selected: boolean;
   public shipSizeSequence: ShipSize[];
@@ -862,7 +881,7 @@ class ShipCraftState implements AbstractBattleShipState {
  * one's ships in turns.
  */
 class BattleState implements AbstractBattleShipState {
-  public kind:BattleShipStateKind.BATTLE;
+  public kind: BattleShipStateKind.BATTLE;
   public player: PLAYER;
   public selected: boolean;
   public pos: BoardPosition | null;
@@ -892,7 +911,7 @@ class BattleState implements AbstractBattleShipState {
  * Class that represents the end of the game.
  */
 class GameOverState implements AbstractBattleShipState {
-  public kind:BattleShipStateKind.GAME_OVER;
+  public kind: BattleShipStateKind.GAME_OVER;
   public player: PLAYER; // Player that won the match
 
   constructor(winningPlayer: PLAYER) {
@@ -914,7 +933,7 @@ type BattleShipState = ShipCraftState | BattleState | GameOverState;
  */
 class BattleShipRules {
   private gameState: BattleShipState;
-  
+
   constructor(gameSettings: BattleShipSettings) {
 
     this.gameState = new ShipCraftState(gameSettings.buildShipSizeSequence(), PLAYER.P1);
@@ -948,7 +967,7 @@ class BattleShipRules {
     return [new EnableSelection(), new EnableRotation(), new EnableMove()];
   }
 
-  public apply(event:BattleShipEvent, game:BattleShipGame): [BattleShipCommand[], BattleShipControl[]]{
+  public apply(event: BattleShipEvent, game: BattleShipGame): [BattleShipCommand[], BattleShipControl[]] {
     let cmds = [] as BattleShipCommand[];
 
     const beforeState = this.gameState.clone();
@@ -964,7 +983,7 @@ class BattleShipRules {
     }
 
     const controls = this.generateControls(beforeState);
-    
+
     return [cmds, controls];
   }
 
@@ -975,22 +994,22 @@ class BattleShipRules {
    */
   private generateControls(beforeState: BattleShipState): BattleShipControl[] {
     if (beforeState.kind === BattleShipStateKind.SHIP_CRAFTING && beforeState.player === PLAYER.P2
-    && this.gameState.player === PLAYER.P1) {
+      && this.gameState.player === PLAYER.P1) {
       return [new DisableRotation()];
     }
 
     if (beforeState.kind === BattleShipStateKind.BATTLE && this.gameState.kind === BattleShipStateKind.GAME_OVER) {
       return [new DisableSelection(), new DisableUnselection, new DisableMove()];
     }
-    
+
     return [];
   }
 
-  private processSelect(game:BattleShipGame): BattleShipCommand[] {
+  private processSelect(game: BattleShipGame): BattleShipCommand[] {
     const cmds = [] as BattleShipCommand[];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && !this.gameState.selected) {
-        cmds.push(new SelectShipCmd());
-        this.gameState.selected = true;
+      cmds.push(new SelectShipCmd());
+      this.gameState.selected = true;
     }
 
     if (this.gameState.kind === BattleShipStateKind.BATTLE && !this.gameState.selected) {
@@ -1001,26 +1020,26 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processUnselect(game:BattleShipGame): BattleShipCommand[] {
+  private processUnselect(game: BattleShipGame): BattleShipCommand[] {
     const cmds = [] as BattleShipCommand[];
-    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected 
-    && this.gameState.pos !== null) {
+    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected
+      && this.gameState.pos !== null) {
       const player = this.gameState.player;
       const shipSize = this.gameState.shipSizeSequence[this.gameState.shipSizeIterator];
       const orientation = this.gameState.orientation;
       const pos = this.gameState.pos;
-      
+
       try {
         game.settleShip(player, shipSize, orientation, pos);
       } catch (e) {
         const errorCmd = new ErrorCmd();
         errorCmd.log = 'Error trying to settle ship.'
-        + `\nPlayer: ${player}`
-        + `\nSize: ${shipSize}`
-        + `\nOrientation: ${orientation}`
-        + `\nPosition: ${pos}`
-        + `\n\n${e.msg}`;
-        
+          + `\nPlayer: ${player}`
+          + `\nSize: ${shipSize}`
+          + `\nOrientation: ${orientation}`
+          + `\nPosition: ${pos}`
+          + `\n\n${e.msg}`;
+
         cmds.push(errorCmd);
         return cmds;
       }
@@ -1059,10 +1078,10 @@ class BattleShipRules {
       } catch (e) {
         const errorCmd = new ErrorCmd();
         errorCmd.log = 'Error trying to attack position.'
-        + `\nPlayer: ${player}`
-        + `\nPosition: ${pos}`
-        + `\n\n${e.msg}`;
-        
+          + `\nPlayer: ${player}`
+          + `\nPosition: ${pos}`
+          + `\n\n${e.msg}`;
+
         cmds.push(errorCmd);
         return cmds;
       }
@@ -1080,20 +1099,20 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processRotate(game:BattleShipGame): BattleShipCommand[] {
+  private processRotate(game: BattleShipGame): BattleShipCommand[] {
     const cmds = [] as BattleShipCommand[];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
-      this.gameState.orientation = this.gameState.orientation === ORIENTATION.VERTICAL ? 
-      ORIENTATION.HORIZONTAL : ORIENTATION.VERTICAL;
+      this.gameState.orientation = this.gameState.orientation === ORIENTATION.VERTICAL ?
+        ORIENTATION.HORIZONTAL : ORIENTATION.VERTICAL;
       cmds.push(new RotateShipCmd());
     }
     return cmds;
   }
 
-  private processMove(game:BattleShipGame, loc:BSMoveLoc, to:BoardPosition): BattleShipCommand[] {
+  private processMove(game: BattleShipGame, loc: BSMoveLoc, to: BoardPosition): BattleShipCommand[] {
     const cmds = [] as BattleShipCommand[];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && loc === BSMoveLoc.SHIP_GRID
-    && this.gameState.selected) {
+      && this.gameState.selected) {
       this.gameState.pos = to;
       cmds.push(new MoveShipCmd(to));
     }
@@ -1126,7 +1145,7 @@ enum BattleShipCommandKind {
  * Abstract class for planning interaction of the Presenter with the Scene
  */
 abstract class BattleShipCommand {
-  public abstract kind:BattleShipCommandKind;
+  public abstract kind: BattleShipCommandKind;
   public log?: string;
 }
 
@@ -1137,7 +1156,7 @@ class ChangePlayerCmd extends BattleShipCommand {
 class MakeShipCmd extends BattleShipCommand {
   public kind = BattleShipCommandKind.MAKE_SHIP;
   public size: ShipSize;
-  constructor (size: ShipSize) {
+  constructor(size: ShipSize) {
     super();
     this.size = size;
   }
@@ -1158,7 +1177,7 @@ class SelectShipCmd extends BattleShipCommand {
 class MovePinCmd extends BattleShipCommand {
   public kind = BattleShipCommandKind.MOVE_PIN;
   public to: BoardPosition;
-  constructor (to: BoardPosition) {
+  constructor(to: BoardPosition) {
     super();
     this.to = to;
   }
@@ -1171,7 +1190,7 @@ class RotateShipCmd extends BattleShipCommand {
 class MoveShipCmd extends BattleShipCommand {
   public kind = BattleShipCommandKind.MOVE_SHIP;
   public to: BoardPosition;
-  constructor (to: BoardPosition) {
+  constructor(to: BoardPosition) {
     super();
     this.to = to;
   }
@@ -1196,11 +1215,11 @@ class ErrorCmd extends BattleShipCommand {
  */
 class BattleShipPresenter {
   private view: BattleShipScene;
-  constructor(scene:BattleShipScene) {
+  constructor(scene: BattleShipScene) {
     this.view = scene;
   }
 
-  public update = async (cmds:BattleShipCommand[]) => {
+  public update = async (cmds: BattleShipCommand[]) => {
     for (let cmd of cmds) {
       if (cmd.log) {
         console.log(`Command ${cmd.kind}:\n${cmd.log}`)
@@ -1286,20 +1305,20 @@ class DisableMove extends BattleShipControl {
  * Battleship game main class
  */
 class BattleShip {
-  private game:BattleShipGame;
-  private rules:BattleShipRules;
-  private sensor:BattleShipSensor;
-  private viewPresenter:BattleShipPresenter;
+  private game: BattleShipGame;
+  private rules: BattleShipRules;
+  private sensor: BattleShipSensor;
+  private viewPresenter: BattleShipPresenter;
 
   constructor(settings: BattleShipSettings, sensor: BattleShipSensor, presenter: BattleShipPresenter) {
-    
+
     this.game = new BattleShipGame(settings);
     this.rules = new BattleShipRules(settings);
-    
+
     this.sensor = sensor;
     this.viewPresenter = presenter;
   }
-  
+
   public async init() {
     const [initCmds, initControls] = await this.rules.init();
     this.viewPresenter.update(initCmds);
@@ -1312,28 +1331,28 @@ class BattleShip {
    * 2) Synchronize game view with command signals from game logic
    * 3) Update event handling with control signals from game logic
    */
-  public async update(event:BattleShipEvent) {
+  public async update(event: BattleShipEvent) {
     const [cmds, controls] = await this.rules.apply(event, this.game);
     this.viewPresenter.update(cmds);
     this.updateSensor(controls);
   }
 
-  private async updateSensor(controls:BattleShipControl[]) {
+  private async updateSensor(controls: BattleShipControl[]) {
     for (let control of controls) {
       if (control.log) {
         console.log(`Control Signal ${control.kind}:\n${control.log}`)
       }
 
       if (control.kind === BattleShipControlKind.ENABLE_SELECTION) {
-        this.sensor.selectHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.selectHandler = (event: BattleShipEvent) => this.update(event);
       } else if (control.kind === BattleShipControlKind.ENABLE_UNSELECTION) {
-        this.sensor.unselectHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.unselectHandler = (event: BattleShipEvent) => this.update(event);
       } if (control.kind === BattleShipControlKind.ENABLE_ROTATION) {
-        this.sensor.rotateHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.rotateHandler = (event: BattleShipEvent) => this.update(event);
       } else if (control.kind === BattleShipControlKind.DISABLE_ROTATION) {
         this.sensor.rotateHandler = undefined;
       } else if (control.kind === BattleShipControlKind.ENABLE_MOVE) {
-        this.sensor.moveHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.moveHandler = (event: BattleShipEvent) => this.update(event);
       }
     }
   }
@@ -1367,17 +1386,17 @@ game.init();
 //
 
 var lights = [];
-lights[ 0 ] = new THREE.PointLight( 0xffffff, 1, 0 );
-lights[ 1 ] = new THREE.PointLight( 0xffffff, 1, 0 );
-lights[ 2 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+lights[0] = new THREE.PointLight(0xffffff, 1, 0);
+lights[1] = new THREE.PointLight(0xffffff, 1, 0);
+lights[2] = new THREE.PointLight(0xffffff, 1, 0);
 
-lights[ 0 ].position.set( 0, 200, 0 );
-lights[ 1 ].position.set( 100, 200, 100 );
-lights[ 2 ].position.set( - 100, - 200, - 100 );
+lights[0].position.set(0, 200, 0);
+lights[1].position.set(100, 200, 100);
+lights[2].position.set(- 100, - 200, - 100);
 
-scene.add( lights[ 0 ] );
-scene.add( lights[ 1 ] );
-scene.add( lights[ 2 ] );
+scene.add(lights[0]);
+scene.add(lights[1]);
+scene.add(lights[2]);
 
 //
 // Add ambient light to scene
