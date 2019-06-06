@@ -14,351 +14,380 @@ document.body.appendChild(renderer.domElement);
 
 const BOARD_SIZE = 10 as const;
 const SHIP_COUNT = [1, 3, 1] as const;
+const ANIMATION_STEP = 60 as const;
 
-const lastItem = <T>(xs: { 0: T } & T[]): T  => xs[xs.length - 1];
+const lastItem = <T>(xs: {0: T} & T[]): T => xs[xs.length - 1];
 
 /**
  *  Game scene manager. Manages game visual aspects (geometries, colors) and provides a high level interface
  * for view control.
 */
 class BattleShipScene {
-    private static P1BarrierGridPosition = new THREE.Vector3(-2, 1.01, 0);
-    private static P1GridPosition = new THREE.Vector3(-2, 1.25, -0.24);
+  private static P1BarrierGridPosition = new THREE.Vector3(-2, -1.26, 7);
+  private static P1GridPosition = new THREE.Vector3(-2, -5.25, -0.24);
 
-    private shipsGroup: THREE.Group;
-    private pinsGroup: THREE.Group;
+  private shipsGroup: THREE.Group;
+  private pinsGroup: THREE.Group;
 
-    public player1 = new THREE.Group();
-    public player2 = new THREE.Group();
+  public player1 = new THREE.Group();
+  public player2 = new THREE.Group();
 
-    get ships(): { 0: THREE.Object3D } & THREE.Object3D[] {
-      return this.shipsGroup.children as any;
+  get ships(): {0: THREE.Object3D} & THREE.Object3D[] {
+    return this.shipsGroup.children as any;
+  }
+
+  get pins(): {0: THREE.Object3D} & THREE.Object3D[] {
+    return this.pinsGroup.children as any;
+  }
+
+  private firstPlayer: boolean = true;
+
+  constructor(private scene: THREE.Scene) {
+    this.makeBoard();
+    this.shipsGroup = new THREE.Group();
+    this.pinsGroup = new THREE.Group();
+
+    this.scene.add(this.shipsGroup);
+    this.scene.add(this.pinsGroup);
+
+    this.makeShip(2);
+  };
+
+  public changePlayer(): void {
+    this.firstPlayer = !this.firstPlayer;
+
+    const rotation = new THREE.Matrix4();
+    rotation.makeRotationZ(Math.PI / ANIMATION_STEP);
+
+    this.animate(() => {
+      rotation.multiplyVector3(camera.position);
+      camera.lookAt(new THREE.Vector3(0, 0, 0));
+    });
+  }
+
+  public selectShip(): void {
+    const ship = lastItem(this.ships);
+
+    const delta = 2 / ANIMATION_STEP;
+    this.animate(() => ship.position.z += delta);
+  }
+
+  public settleShip(): void {
+    const ship = lastItem(this.ships);
+
+    const delta = 2 / ANIMATION_STEP;
+    this.animate(() => ship.position.z -= delta);
+  }
+
+  public moveShip(to: [number, number]): void {
+    const ship = lastItem(this.ships);
+    const finalPos = this.gridPosition(to);
+
+    let deltaPos = new THREE.Vector3();
+    deltaPos.subVectors(finalPos, ship.position);
+    deltaPos.divideScalar(ANIMATION_STEP);
+
+    this.animate(() => ship.position.add(deltaPos));
+  }
+
+  public rotateShip(): void {
+    const ship = lastItem(this.ships);
+
+    this.animate(() => ship.rotateZ(Math.PI / 120));
+  }
+
+  public selectPin(): void {
+    const pin = lastItem(this.pins);
+
+    const delta = 2 / ANIMATION_STEP;
+    this.animate(() => pin.position.z += delta);
+  }
+
+  public movePin(to: [number, number]): void {
+    const pin = lastItem(this.pins);
+    const finalPos = this.barrierGridPosition(to);
+
+    let deltaPos = new THREE.Vector3();
+    deltaPos.subVectors(finalPos, pin.position);
+    deltaPos.divideScalar(ANIMATION_STEP);
+
+    this.animate(() => pin.position.add(deltaPos));
+  }
+
+  public settlePin(): void {
+    const pin = lastItem(this.pins);
+
+    const delta = 2 / ANIMATION_STEP;
+    this.animate(() => pin.position.z -= delta);
+  }
+
+  public makeShip(length: 2 | 3 | 4): void {
+    const ship = new THREE.Mesh(
+      new THREE.BoxBufferGeometry(0.5, 0.8 * length, 0.5),
+      new THREE.MeshBasicMaterial({
+        color: 0xEEEEEE,
+        side: THREE.DoubleSide
+      }));
+    ship.position.x = 7.5;
+    ship.position.y = -9;
+    ship.position.z = -0.24;
+
+    this.shipsGroup.add(ship);
+  }
+
+  public makePin(): void {
+    const pin = new THREE.Mesh(
+      new THREE.BoxBufferGeometry(0.5, 1, 0.5),
+      new THREE.MeshBasicMaterial({
+        color: 0xFF0000,
+        side: THREE.DoubleSide,
+      })
+    )
+
+    pin.position.x = 8.5;
+    pin.position.y = 8;
+    pin.position.z = -0.8;
+
+    this.pinsGroup.add(pin);
+  }
+
+  public locationInGrid(pos: THREE.Vector3): [number, number] | null {
+    const currentGridPos = new THREE.Vector3()
+      .addVectors(this.currentGrid().position, this.currentPlayer().position);
+
+    console.log(`Receive position: ${pos.x},${pos.y},${pos.z}, will match with grid: ${currentGridPos.x},${currentGridPos.y},${currentGridPos.z}`);
+    let deltaPos = new THREE.Vector3()
+      .subVectors(pos, currentGridPos)
+      .multiplyScalar(BOARD_SIZE / 9)
+      .floor();
+
+    const x = deltaPos.x;
+    const y = deltaPos.y;
+
+    console.log(`x=${x} y=${y}`);
+    if (x >= 0 && x < 10 && y >= 0 && y < 10)
+      return [Math.floor(x), Math.floor(y)];
+    else
+      return null;
+  }
+
+  public locationInBarrierGrid(pos: THREE.Vector3): [number, number] | null {
+    let deltaPos = new THREE.Vector3();
+    deltaPos.subVectors(pos, BattleShipScene.P1BarrierGridPosition);
+    deltaPos.multiplyScalar(BOARD_SIZE / 9);
+
+    const z = Math.abs(deltaPos.z);
+    const x = Math.abs(deltaPos.x);
+
+    if (z >= 0 && x >= 9)
+      return [Math.floor(z), Math.floor(x)];
+    else
+      return null;
+  }
+
+  public currentPlayer(): THREE.Group {
+    return this.firstPlayer ? this.player1 : this.player2;
+  }
+
+  public currentGrid(): THREE.Object3D {
+    const player = this.firstPlayer ? this.player1 : this.player2;
+
+    return player.children[1];
+  }
+
+  public currentBarrierGrid(): THREE.Mesh {
+    const player = this.firstPlayer ? this.player1 : this.player2;
+
+    return player.children[3] as THREE.Mesh;
+  }
+  private makeBoard(): void {
+    const material1 = new THREE.MeshPhongMaterial({
+      color: 0x2121CE,
+      emissive: 0x1A3C8E,
+      specular: 0x7BC8F2,
+      shininess: 100,
+      fog: true,
+      side: THREE.DoubleSide,
+      vertexColors: THREE.NoColors,
+      flatShading: false,
+    });
+    const material2 = new THREE.MeshPhongMaterial({
+      color: 0x004242,
+      emissive: 0x1A3C8E,
+      specular: 0x7BC8F2,
+      shininess: 100,
+      fog: true,
+      side: THREE.DoubleSide,
+      vertexColors: THREE.NoColors,
+      flatShading: false,
+    });
+
+    this.player1 = this.makePlayerSide(material1);
+    this.player2 = this.makePlayerSide(material2);
+    this.player2.rotateZ(Math.PI);
+
+    this.scene.add(this.player1);
+    this.scene.add(this.player2);
+  }
+
+  private makePlayerSide(material: THREE.Material): THREE.Group {
+    let player = new THREE.Group();
+
+    const board = new THREE.Mesh(
+      new THREE.BoxBufferGeometry(12, 12, 1),
+      material,
+    );
+    board.position.z = -1;
+    board.position.y = -6;
+    player.add(board);
+
+    const playergrid = this.makeGrid();
+    playergrid.position.copy(BattleShipScene.P1GridPosition.clone());
+    player.add(playergrid);
+
+    const barrier = new THREE.Mesh(
+      new THREE.BoxBufferGeometry(12, 1, 12),
+      material
+    );
+    barrier.position.z = 5.5;
+    barrier.position.y = -0.5;
+    player.add(barrier);
+
+    const p1barrierGrid = this.makeGrid();
+    p1barrierGrid.rotateX(Math.PI / 2);
+    p1barrierGrid.position.copy(BattleShipScene.P1BarrierGridPosition.clone());
+    player.add(p1barrierGrid);
+
+    const p1box = new THREE.Mesh(
+      new THREE.BoxBufferGeometry(2, 2, 1),
+      material,
+    );
+    p1box.position.x = 7.5;
+    p1box.position.y = -9;
+    p1box.position.z = -1;
+    player.add(p1box);
+
+    console.log(player);
+    return player;
+  }
+
+  private makeGrid(): THREE.Group {
+    let grid = new THREE.Group();
+    let size = 9 / BOARD_SIZE;
+    let white = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide
+    });
+    let black = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      side: THREE.DoubleSide
+    });
+
+    for (let i = 0; i != BOARD_SIZE; i++) {
+      for (let j = 0; j != BOARD_SIZE; j++) {
+        let mesh = new THREE.Mesh(
+          new THREE.PlaneBufferGeometry(size, size),
+          ((i + j) & 1) === 0 ? black : white
+        );
+        mesh.position.copy(this.gridPosition([i, j]));
+
+        grid.add(mesh);
+      }
     }
 
-    get pins(): { 0: THREE.Object3D } & THREE.Object3D[] {
-      return this.pinsGroup.children as any;
+    return grid;
+  }
+
+  private gridPosition(pos: [number, number]): THREE.Vector3 {
+    let gridPos = BattleShipScene.P1GridPosition.clone();
+    if (!this.firstPlayer) {
+      let matrix = new THREE.Matrix4();
+      matrix.makeRotationZ(Math.PI);
+      matrix.multiplyVector3(gridPos);
     }
 
-    private firstPlayer: boolean = true;
+    const size = 9 / BOARD_SIZE;
 
-    constructor(private scene: THREE.Scene) {
-        this.makeBoard();
-        this.shipsGroup = new THREE.Group();
-        this.pinsGroup = new THREE.Group();
+    gridPos.x += pos[0] * size;
+    gridPos.y += pos[1] * size;
 
-        this.scene.add(this.shipsGroup);
-        this.scene.add(this.pinsGroup);
+    return gridPos;
+  }
 
-        this.makeShip(2);
+  private barrierGridPosition(pos: [number, number]): THREE.Vector3 {
+    let barGridPos = BattleShipScene.P1BarrierGridPosition.clone();
+    if (!this.firstPlayer) {
+      let matrix = new THREE.Matrix4();
+      matrix.makeRotationX(Math.PI / 2);
+      matrix.multiplyVector3(barGridPos);
+    }
+
+    const size = 9 / BOARD_SIZE;
+
+    barGridPos.z += pos[0] * size;
+    barGridPos.x += pos[1] * size;
+
+    return barGridPos;
+  }
+
+  private animate(animation: () => void): void {
+    let steps = ANIMATION_STEP;
+
+    const animContinuation = () => {
+      steps--;
+      animation();
+
+      if (steps) setTimeout(animContinuation, 16);
     };
 
-    public changePlayer(): void {
-        this.firstPlayer = !this.firstPlayer;
-
-        const rotation = new THREE.Matrix4();
-        rotation.makeRotationZ(Math.PI / 60);
-
-        this.animate(() => {
-            rotation.multiplyVector3(camera.position);
-            camera.lookAt(new THREE.Vector3(0, 0, 0));
-        });
-    }
-
-    public selectShip(): void {
-        const ship = lastItem(this.ships);
-
-        const delta = 2 / 60;
-        this.animate(() => ship.position.z += delta);
-    }
-
-    public settleShip(): void {
-        const ship = lastItem(this.ships);
-
-        const delta = 2 / 60;
-        this.animate(() => ship.position.z -= delta);
-    }
-
-    public moveShip(to: [number, number]): void {
-        const ship = lastItem(this.ships);
-        const finalPos = this.gridPosition(to);
-
-        let deltaPos = new THREE.Vector3();
-        deltaPos.subVectors(finalPos, ship.position);
-        deltaPos.divideScalar(60);
-
-        this.animate(() => ship.position.add(deltaPos));
-    }
-
-    public rotateShip(): void {
-        const ship = lastItem(this.ships);
-
-        this.animate(() => ship.rotateZ(Math.PI / 120));
-    }
-
-    public selectPin(): void {
-        const pin = lastItem(this.pins);
-
-        const delta = 2 / 60;
-        this.animate(() => pin.position.z += delta);
-    }
-
-    public movePin(to: [number, number]): void {
-        const pin = lastItem(this.pins);
-        const finalPos = this.barrierGridPosition(to);
-
-        let deltaPos = new THREE.Vector3();
-        deltaPos.subVectors(finalPos, pin.position);
-        deltaPos.divideScalar(60);
-
-        this.animate(() => pin.position.add(deltaPos));
-    }
-
-    public settlePin(): void {
-        const pin = lastItem(this.pins);
-
-        const delta = 2 / 60;
-        this.animate(() => pin.position.z -= delta);
-    }
-
-    public makeShip(length: 2 | 3 | 4): void {
-        const ship = new THREE.Mesh(
-          new THREE.BoxBufferGeometry(0.5, 0.8 * length, 0.5),
-          new THREE.MeshBasicMaterial({
-            color: 0xEEEEEE,
-            side: THREE.DoubleSide
-          }));
-        ship.position.x = 7.5;
-        ship.position.y = -9;
-        ship.position.z = -0.24;
-
-        this.shipsGroup.add(ship);
-    }
-
-    public makePin(): void {
-        const pin = new THREE.Mesh(
-          new THREE.BoxBufferGeometry(0.5, 1, 0.5),
-          new THREE.MeshBasicMaterial({
-            color: 0xFF0000,
-            side: THREE.DoubleSide,
-          })
-        )
-
-        pin.position.x = 8.5;
-        pin.position.y = 8;
-        pin.position.z = -0.8;
-
-        this.pinsGroup.add(pin);
-    }
-
-    public locationInGrid(pos: THREE.Vector3): [number, number] | null {
-        let deltaPos = new THREE.Vector3();
-        deltaPos.subVectors(pos, BattleShipScene.P1GridPosition);
-        deltaPos.multiplyScalar(BOARD_SIZE / 9);
-
-        if (deltaPos.x >= 0 && deltaPos.y >= 9)
-            return [Math.floor(deltaPos.x), Math.floor(deltaPos.y)];
-        else
-            return null;
-    }
-
-    public locationInBarrierGrid(pos: THREE.Vector3): [number, number] | null {
-        let deltaPos = new THREE.Vector3();
-        deltaPos.subVectors(pos, BattleShipScene.P1BarrierGridPosition);
-        deltaPos.multiplyScalar(BOARD_SIZE / 9);
-
-        if (deltaPos.z >= 0 && deltaPos.x >= 9)
-            return [Math.floor(deltaPos.z), Math.floor(deltaPos.x)];
-        else
-            return null;
-    }
-
-    private makeBoard(): void {
-        const material1 = new THREE.MeshPhongMaterial({
-            color: 0x2121CE,
-            emissive: 0x1A3C8E,
-            specular: 0x7BC8F2,
-            shininess: 100,
-            fog: true,
-            side: THREE.DoubleSide,
-            vertexColors: THREE.NoColors,
-            flatShading: false,
-        });
-        const material2 = new THREE.MeshPhongMaterial({
-            color: 0x424242,
-            emissive: 0x1A3C8E,
-            specular: 0x7BC8F2,
-            shininess: 100,
-            fog: true,
-            side: THREE.DoubleSide,
-            vertexColors: THREE.NoColors,
-            flatShading: false,
-        });
-
-        this.player1 = this.makePlayerSide(material1);
-        this.player2 = this.makePlayerSide(material2);
-        this.player2.rotateZ(Math.PI);
-
-        this.scene.add(this.player1);
-        this.scene.add(this.player2);
-    }
-
-    private makePlayerSide(material: THREE.Material): THREE.Group {
-        let player = new THREE.Group();
-
-        const board = new THREE.Mesh(
-            new THREE.BoxBufferGeometry(12, 12, 1),
-            material,
-        );
-        board.position.z = -1;
-        board.position.y = -6;
-        player.add(board);
-
-        const playergrid = this.makeGrid();
-        playergrid.position.copy(BattleShipScene.P1GridPosition.clone());
-        player.add(playergrid);
-
-        const barrier = new THREE.Mesh(
-            new THREE.BoxBufferGeometry(12, 1, 12),
-            material
-        );
-        barrier.position.z = 5.5;
-        barrier.position.y = -0.5;
-        player.add(barrier);
-
-        const p1barrierGrid = this.makeGrid();
-        p1barrierGrid.rotateX(Math.PI / 2);
-        p1barrierGrid.position.copy(BattleShipScene.P1BarrierGridPosition.clone());
-        player.add(p1barrierGrid);
-
-        const p1box = new THREE.Mesh(
-          new THREE.BoxBufferGeometry(2, 2, 1),
-          material,
-        );
-        p1box.position.x = 7.5;
-        p1box.position.y = -9;
-        p1box.position.z = -1;
-        player.add(p1box);
-
-        return player;
-    }
-
-    private makeGrid(): THREE.Group {
-        let grid = new THREE.Group();
-        let size = 9 / BOARD_SIZE;
-        let white = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            side: THREE.DoubleSide
-        });
-        let black = new THREE.MeshBasicMaterial({
-            color: 0x000000,
-            side: THREE.DoubleSide
-        });
-
-        for (let i = 0; i != BOARD_SIZE; i++) {
-            for (let j = 0; j != BOARD_SIZE; j++) {
-                let mesh = new THREE.Mesh(
-                    new THREE.PlaneBufferGeometry(size, size),
-                    ((i + j) & 1) === 0 ? black : white
-                );
-                mesh.position.copy(this.gridPosition([i, j]));
-
-                grid.add(mesh);
-            }
-        }
-
-        return grid;
-    }
-
-    private gridPosition(pos: [number, number]): THREE.Vector3 {
-        let gridPos = BattleShipScene.P1GridPosition.clone();
-        if (!this.firstPlayer) {
-          let matrix = new THREE.Matrix4();
-          matrix.makeRotationZ(Math.PI);
-          matrix.multiplyVector3(gridPos);
-        }
-
-        const size = 9 / BOARD_SIZE;
-
-        gridPos.x += pos[0] * size;
-        gridPos.y += pos[1] * size;
-
-        return gridPos;
-    }
-
-    private barrierGridPosition(pos: [number, number]): THREE.Vector3  {
-        let barGridPos = BattleShipScene.P1BarrierGridPosition.clone();
-        if (!this.firstPlayer) {
-          let matrix = new THREE.Matrix4();
-          matrix.makeRotationX(Math.PI / 2);
-          matrix.multiplyVector3(barGridPos);
-        }
-
-        const size = 9 / BOARD_SIZE;
-
-        barGridPos.z += pos[0] * size;
-        barGridPos.x += pos[1] * size;
-
-        return barGridPos;
-    }
-
-    private animate(animation: () => void): void {
-        let steps = 60;
-
-        const fullAnimation = () => {
-            steps--;
-            animation();
-
-            if (steps) setTimeout(fullAnimation, 16);
-        };
-
-        fullAnimation();
-    }
+    animContinuation();
+  }
 }
 
 const enum BSEventKind {
-    /*! An object was selected (a ship or a pin). */
-    SELECT,
-    /*! An object was unselected (a ship or a pin). */
-    UNSELECT,
-    /*! Mouse movent over the grid. */
-    MOVE,
-    /*! Rotate a ship. */
-    ROTATE,
+  /*! An object was selected (a ship or a pin). */
+  SELECT,
+  /*! An object was unselected (a ship or a pin). */
+  UNSELECT,
+  /*! Mouse movent over the grid. */
+  MOVE,
+  /*! Rotate a ship. */
+  ROTATE,
 }
 
 const enum BSMoveLoc {
-    SHIP_GRID,
-    PIN_GRID,
+  SHIP_GRID,
+  PIN_GRID,
 }
 
 abstract class BattleShipEvent {
-    public abstract kind: BSEventKind;
+  public abstract kind: BSEventKind;
 }
 
 class BSSelectEvent extends BattleShipEvent {
-    public kind = BSEventKind.SELECT;
+  public kind = BSEventKind.SELECT;
 }
 
 class BSUnselectEvent extends BattleShipEvent {
-    public kind = BSEventKind.UNSELECT;
+  public kind = BSEventKind.UNSELECT;
 }
 
 class BSMoveEvent extends BattleShipEvent {
-    public kind = BSEventKind.MOVE;
+  public kind = BSEventKind.MOVE;
 
-    constructor(public to: [number, number], public loc: BSMoveLoc) {
-      super();
-    }
+  constructor(public to: [number, number], public loc: BSMoveLoc) {
+    super();
+  }
 }
 
 class BSRotateEvent extends BattleShipEvent {
-    public kind = BSEventKind.ROTATE;
+  public kind = BSEventKind.ROTATE;
 }
 
 
 const enum ORIENTATION {
-    HORIZONTAL,
-    VERTICAL
+  HORIZONTAL,
+  VERTICAL
 }
 
 type Handler<E extends BattleShipEvent> = (event: E) => void;
@@ -368,59 +397,75 @@ type Handler<E extends BattleShipEvent> = (event: E) => void;
  *  game events.
 */
 class BattleShipSensor {
-    public selectHandler?: Handler<BSSelectEvent> = undefined;
-    public unselectHandler?: Handler<BSUnselectEvent> = undefined;
-    public moveHandler?: Handler<BSMoveEvent> = undefined;
-    public rotateHandler?: Handler<BSRotateEvent> = undefined;
+  public selectHandler?: Handler<BSSelectEvent> = undefined;
+  public unselectHandler?: Handler<BSUnselectEvent> = undefined;
+  public moveHandler?: Handler<BSMoveEvent> = undefined;
+  public rotateHandler?: Handler<BSRotateEvent> = undefined;
 
-    private raycaster = new THREE.Raycaster();
-    private selecting = false;
+  private raycaster = new THREE.Raycaster();
+  private selecting = false;
 
-    constructor(private scene: BattleShipScene) {
-      window.addEventListener('mousemove', eve => this.toMoveEvent(eve), false);
-      window.addEventListener('mouseup', () => this.selectEvent(), false);
-      window.addEventListener('mousedown', eve => this.unselectOrRotateEvent(eve), false);
-    }
+  constructor(private scene: BattleShipScene) {
+    window.addEventListener('mousemove', eve => this.toMoveEvent(eve), false);
+    window.addEventListener('mouseup', eve => this.mouseUpEvent(eve), false);
+    window.addEventListener('mousedown', eve => this.mouseDownEvent(eve), false);
+  }
 
-    private toMoveEvent(event: MouseEvent): void {
-      if (!this.moveHandler) return;
+  private toMoveEvent(event: MouseEvent): void {
+    this.raycaster.setFromCamera({
+      x: (event.clientX / window.innerWidth) * 2 - 1,
+      y: - (event.clientY / window.innerHeight) * 2 + 1,
+    }, camera);
 
-      this.raycaster.setFromCamera({
-        x: (event.clientX / window.innerWidth) * 2 - 1,
-        y: - (event.clientY / window.innerHeight) * 2 + 1,
-      }, camera);
-
-      let intersects = this.raycaster.intersectObject(this.scene.player1);
-      if (!intersects) {
-          intersects = this.raycaster.intersectObject(this.scene.player2);
-          if (!intersects) return;
-      }
-
-      let pos = this.scene.locationInGrid(intersects[0].point);
+    let gridObjects = this.scene.currentGrid().children;
+    let [intersect] = this.raycaster.intersectObjects(gridObjects);
+    if (intersect) {
+      const intersectionPoint = intersect.point.add(intersect.face!.normal);
+      const pos = this.scene.locationInGrid(intersectionPoint);
       if (pos) {
-        this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.SHIP_GRID));
-      } else if (pos = this.scene.locationInBarrierGrid(intersects[0].point)) {
-        this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.PIN_GRID));
+        console.log(`Emitting bsmoveevent event over SHIP_GRID in ${pos}`);
+        //this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.SHIP_GRID));
+      }
+    } else {
+      gridObjects = this.scene.currentBarrierGrid().children;
+      [intersect] = this.raycaster.intersectObjects(gridObjects);
+
+      if (intersect) {
+        const intersectionPoint = intersect.point.add(intersect.face!.normal);
+        const pos = this.scene.locationInBarrierGrid(intersectionPoint);
+        if (pos) {
+          console.log(`Emitting bsmoveevent event over SHIP_GRID in ${pos}`);
+          //this.moveHandler(new BSMoveEvent(pos, BSMoveLoc.SHIP_GRID));
+        }
       }
     }
+  }
 
-    private selectEvent(): void {
+  private mouseUpEvent(event: MouseEvent): void {
+    switch (event.button) {
+      case 0:
         if (!this.selectHandler) return;
-
         this.selecting = true;
-        this.selectHandler(new BSSelectEvent);
+        return this.selectHandler(new BSSelectEvent);
     }
+  }
 
-    private unselectOrRotateEvent(event: MouseEvent): void {
-        if (this.rotateHandler && event.button === 2) {
-          return this.rotateHandler(new BSRotateEvent);
-        }
-
-        if (this.unselectHandler && this.selecting) {
+  private mouseDownEvent(event: MouseEvent): void {
+    switch (event.button) {
+      case 0:
+        if (!this.selectHandler) return;
+        this.selecting = true;
+        return this.selectHandler(new BSSelectEvent);
+      case 2:
+        if (!this.rotateHandler) return;
+        return this.rotateHandler(new BSRotateEvent);
+      default:
+        if (this.selecting && this.unselectHandler) {
           this.selecting = false;
           this.unselectHandler(new BSUnselectEvent);
         }
     }
+  }
 }
 
 /**
@@ -439,15 +484,15 @@ type BoardPosition = [number, number];
  * Holds information about a specific Ship object
  */
 class ShipPiece {
-  public id:number;
-  public size:number;
-  public orientation:ORIENTATION
-  public position:BoardPosition;
-  public damaged:boolean[];
-  public damage:number;
+  public id: number;
+  public size: number;
+  public orientation: ORIENTATION
+  public position: BoardPosition;
+  public damaged: boolean[];
+  public damage: number;
 
 
-  constructor(idx:number, size:number, orientation: ORIENTATION, position: BoardPosition) {
+  constructor(idx: number, size: number, orientation: ORIENTATION, position: BoardPosition) {
     this.id = idx;
     this.size = size;
     this.orientation = orientation;
@@ -508,7 +553,7 @@ class BattleShipBoard {
   private board: BattleShipBoardCell[][];
   private boardSize: number;
 
-  constructor(boardSize:number) {
+  constructor(boardSize: number) {
     this.board = [] as BattleShipBoardCell[][];
     this.boardSize = boardSize;
     this.initBoard();
@@ -521,7 +566,7 @@ class BattleShipBoard {
    * @throws Error if ship's orientation makes it partially out of board bounds
    * @throws Error if ship's overlaps with an already settled ship
    */
-  public settleShip(ship:ShipPiece) {
+  public settleShip(ship: ShipPiece) {
     const x = ship.position[0], y = ship.position[1];
     if (x < 0 || x >= this.boardSize || y < 0 || y > this.boardSize) {
       throw new Error(`Ship ${ship.id} position out of board bounds`);
@@ -580,7 +625,7 @@ class BattleShipBoard {
     }
     cell.attacked = true;
     return cell.cellKind === BoardCellKind.SHIP ? [(cell as ShipBoardCell).shipId, (cell as ShipBoardCell).shipPart]
-    : null;
+      : null;
   }
 
   private initBoard() {
@@ -692,7 +737,7 @@ class BattleShipGame {
   private p1: BattleShipPlayer;
   private p2: BattleShipPlayer;
 
-  constructor(settings:Readonly<BattleShipSettings>) {
+  constructor(settings: Readonly<BattleShipSettings>) {
 
     const p1Board = new BattleShipBoard(settings.boardSize);
     const p2Board = new BattleShipBoard(settings.boardSize);
@@ -745,7 +790,7 @@ interface AbstractBattleShipState {
 }
 
 class ShipCraftState implements AbstractBattleShipState {
-  public kind:BattleShipStateKind.SHIP_CRAFT;
+  public kind: BattleShipStateKind.SHIP_CRAFT;
   private shipSizeSequence: number[];
   private shipSizeIterator: number;
 
@@ -785,10 +830,8 @@ type BattleShipState = ShipCraftState;
 class BattleShipRules {
   private currentPlayer: PLAYER;
   private gameState: BattleShipState;
+
   constructor(gameSettings: BattleShipSettings) {
-
-  constructor(gameScene: BattleShipScene) {
-
     this.currentPlayer = PLAYER.P1;
     this.gameState = new ShipCraftState(gameSettings);
   }
@@ -797,12 +840,12 @@ class BattleShipRules {
     return this.gameState;
   }
 
-  public apply(game:BattleShipGame, event:BattleShipEvent | null) {
+  public apply(game: BattleShipGame, event: BattleShipEvent | null) {
     if (event === null) {
       return;
     }
 
-    this.gameState.apply(event);
+    //this.gameState.apply(event);
   }
 }
 
@@ -811,11 +854,11 @@ class BattleShipRules {
  * Translates game-level events to view events.
  */
 class BattleShipPresenter {
-  constructor(gameState:AbstractBattleShipState) {
+  constructor(gameState: AbstractBattleShipState) {
 
   }
 
-  public sync(sceneState:BattleShipScene, gameState:BattleShipGame) {
+  public sync(sceneState: BattleShipScene, gameState: BattleShipGame) {
 
   }
 }
@@ -824,20 +867,20 @@ class BattleShipPresenter {
  * Battleship game main class
  */
 class BattleShip {
-  private settings:Readonly<BattleShipSettings>;
-  private game:BattleShipGame;
-  private rules:BattleShipRules;
-  private view:BattleShipScene;
-  private sensor:BattleShipSensor;
-  private viewPresenter:BattleShipPresenter;
+  private settings: Readonly<BattleShipSettings>;
+  private game: BattleShipGame;
+  private rules: BattleShipRules;
+  private view: BattleShipScene;
+  private sensor: BattleShipSensor;
+  private viewPresenter: BattleShipPresenter;
 
-  constructor(scene:THREE.Scene) {
+  constructor(scene: THREE.Scene) {
     this.settings = new BattleShipSettings();
-    this.sensor = new BattleShipSensor();
 
     this.game = new BattleShipGame(this.settings);
     this.rules = new BattleShipRules(this.settings);
-    this.view = new BattleShipScene(scene, this.game);
+    this.view = new BattleShipScene(scene);
+    this.sensor = new BattleShipSensor(this.view);
     this.viewPresenter = new BattleShipPresenter(this.rules.getState());
   }
 
@@ -848,9 +891,9 @@ class BattleShip {
    * 3) Synchronize game view with updated state
    */
   public update() {
-    const userEvent = this.sensor.sense(this.view);
-    this.rules.apply(this.game, userEvent);
-    this.viewPresenter.sync(this.view);
+    //const userEvent = this.sensor.sense(this.view);
+    //this.rules.apply(this.game, userEvent);
+    //this.viewPresenter.sync(this.view);
   }
 }
 
@@ -900,13 +943,13 @@ scene.add(amblight);
 // Create orbit controls for observation and resize action
 //
 
-let controls = new THREE.OrbitControls(camera);
-controls.update();
+//let controls = new THREE.OrbitControls(camera);
+//controls.update();
 
-window.addEventListener("resize", function () {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 }, false);
 
 //
@@ -914,10 +957,9 @@ window.addEventListener("resize", function () {
 //
 
 const run = () => {
-    requestAnimationFrame(run);
+  requestAnimationFrame(run);
 
-    game.update();
-    renderer.render(scene, camera);
+  renderer.render(scene, camera);
 };
 
 run();
