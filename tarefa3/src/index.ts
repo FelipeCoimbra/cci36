@@ -49,8 +49,6 @@ class BattleShipScene {
 
     this.scene.add(this.shipsGroup);
     this.scene.add(this.pinsGroup);
-
-    this.makeShip(2);
   };
 
   public changePlayer(): void {
@@ -619,7 +617,7 @@ class BattleShipBoard {
    * @throws Error if target is outside board limits
    * @throws Error if target has already been attacked
    */
-  public attack(target: BoardPosition): [number, number] | null {
+  public attack(target: BoardPosition): BoardPosition | null {
     const x = target[0], y = target[1];
     if (x < 0 || y < 0 || x >= this.boardSize || y >= this.boardSize) {
       throw new Error(`Attack position (${x}, ${y}) out of bounds`);
@@ -644,6 +642,8 @@ class BattleShipBoard {
   }
 }
 
+type ShipSize = 2 | 3 | 4;
+
 /**
  * Wrapper class for generic game constants.
  */
@@ -651,7 +651,18 @@ class BattleShipSettings {
   public boardSize = 10 as const;
   public playerShipCount = 5 as const;
   public shipCountByType = [1, 3, 1];
-  public shipSizeByType = [2, 3, 4];
+  public shipSizeByType = [2, 3, 4] as ShipSize[];
+
+  public buildShipSizeSequence(): ShipSize[] {
+    const sizeSequence = [] as ShipSize[];
+    for (let shipType in this.shipCountByType) {
+      const shipCount = this.shipCountByType[shipType];
+      for (let shipTypeCreated = 0; shipTypeCreated < shipCount; shipTypeCreated++) {
+        sizeSequence.push(this.shipSizeByType[shipType]);
+      }
+    }
+    return sizeSequence;
+  }
 }
 
 /**
@@ -700,7 +711,7 @@ class BattleShipPlayer {
    * @return @see{@link BattleShipBoard#attack}
    * @throws @see{@link BattleShipBoard#attack}
    */
-  public attack(target: BoardPosition): [number, number] | null {
+  public attack(target: BoardPosition): BoardPosition | null {
     return this.pinBoard.attack(target);
   }
 
@@ -757,7 +768,7 @@ class BattleShipGame {
    * @param shipOrientation The orientation of the ship to be added
    * @param shipPosition The board position to settle the ship
    */
-  public settleShip(player: PLAYER, shipSize: number, shipOrientation: ORIENTATION, shipPosition: BoardPosition) {
+  public settleShip(player: PLAYER, shipSize: ShipSize, shipOrientation: ORIENTATION, shipPosition: BoardPosition) {
     if (this.p1.getId() === player) {
       this.p1.settleShip(shipSize, shipOrientation, shipPosition);
     } else {
@@ -784,74 +795,399 @@ class BattleShipGame {
 }
 
 enum BattleShipStateKind {
-  SHIP_CRAFT,
+  SHIP_CRAFTING,
+  BATTLE,
+  GAME_OVER,
 }
 
 /**
  * Class to represent a generic game state
  */
-interface AbstractBattleShipState {
-  kind: BattleShipStateKind;
+abstract class AbstractBattleShipState {
+  public abstract kind: BattleShipStateKind; // Game state kind
+  public abstract player: PLAYER; // Current active player
+  
+  public abstract clone(): AbstractBattleShipState;
 }
 
+/**
+ * Class that represents the moment of the game where players place their ships
+ */
 class ShipCraftState implements AbstractBattleShipState {
-  public kind: BattleShipStateKind.SHIP_CRAFT;
-  private shipSizeSequence: number[];
-  private shipSizeIterator: number;
+  public kind:BattleShipStateKind.SHIP_CRAFTING;
+  public player: PLAYER;
+  public selected: boolean;
+  public shipSizeSequence: ShipSize[];
+  public shipSizeIterator: number;
+  public orientation: ORIENTATION;
+  public pos: BoardPosition | null;
 
-  constructor(gameSettings: BattleShipSettings) {
-    this.kind = BattleShipStateKind.SHIP_CRAFT;
-    this.shipSizeSequence = this.buildShipSizeSequence(gameSettings);
+  constructor(shipSizeSequence: ShipSize[], player: PLAYER) {
+    this.kind = BattleShipStateKind.SHIP_CRAFTING;
+    this.player = player;
+    this.selected = false;
+    this.shipSizeSequence = shipSizeSequence;
     this.shipSizeIterator = 0;
+    this.orientation = ORIENTATION.VERTICAL;
+    this.pos = null; // Initially the crafted ship is out of the grid
   }
 
-  public nextShipSize(): number {
+  public clone(): ShipCraftState {
+    const cloneState = new ShipCraftState(this.shipSizeSequence, this.player);
+    cloneState.selected = this.selected;
+    cloneState.shipSizeIterator = this.shipSizeIterator;
+    cloneState.orientation = this.orientation;
+    cloneState.pos = this.pos;
+
+    return cloneState;
+  }
+
+  public nextShipSize(): ShipSize | null {
+    if (this.shipSizeIterator === this.shipSizeSequence.length) return null;
     const size = this.shipSizeSequence[this.shipSizeIterator++];
-    this.shipSizeIterator %= this.shipSizeSequence.length;  // Iterate circularly in sequence
     return size;
   }
 
-  public getShipSizeIterator(): number {
-    return this.shipSizeIterator;
+  public reset() {
+    this.selected = false;
+    this.shipSizeIterator = 0;
+    this.orientation = ORIENTATION.VERTICAL;
+    this.pos = null;
   }
 
-  private buildShipSizeSequence(gameSettings: BattleShipSettings): number[] {
-    const sizeSequence = [] as number[];
-    for (let shipType in gameSettings.shipCountByType) {
-      for (let shipTypeCount = 0; shipTypeCount < gameSettings.shipCountByType[shipType]; shipTypeCount++) {
-        sizeSequence.push(gameSettings.shipSizeByType[shipType]);
-      }
-    }
-    return sizeSequence;
+}
+
+/**
+ * Class that represents the moment of the game where players try to destroy each
+ * one's ships in turns.
+ */
+class BattleState implements AbstractBattleShipState {
+  public kind:BattleShipStateKind.BATTLE;
+  public player: PLAYER;
+  public selected: boolean;
+  public pos: BoardPosition | null;
+
+  constructor() {
+    this.kind = BattleShipStateKind.BATTLE;
+    this.player = PLAYER.P1;
+    this.selected = false;
+    this.pos = null; // Initially the crafted pin is out of the grid
+  }
+
+  public clone(): BattleState {
+    const cloneState = new BattleState();
+    cloneState.selected = this.selected;
+    cloneState.pos = this.pos;
+
+    return cloneState;
+  }
+
+  public reset() {
+    this.selected = false;
+    this.pos = null;
   }
 }
 
-type BattleShipState = ShipCraftState;
+/**
+ * Class that represents the end of the game.
+ */
+class GameOverState implements AbstractBattleShipState {
+  public kind:BattleShipStateKind.GAME_OVER;
+  public player: PLAYER; // Player that won the match
+
+  constructor(winningPlayer: PLAYER) {
+    this.kind = BattleShipStateKind.GAME_OVER;
+    this.player = winningPlayer;
+  }
+
+  public clone(): GameOverState {
+    return new GameOverState(this.player);
+  }
+}
+
+/** Rule states */
+type BattleShipState = ShipCraftState | BattleState | GameOverState;
 
 /**
  * Class responsible for updating game state.
  * Created for decoupling game state update from game rules.
  */
 class BattleShipRules {
-  private currentPlayer: PLAYER;
   private gameState: BattleShipState;
-
+  
   constructor(gameSettings: BattleShipSettings) {
-    this.currentPlayer = PLAYER.P1;
-    this.gameState = new ShipCraftState(gameSettings);
+
+    this.gameState = new ShipCraftState(gameSettings.buildShipSizeSequence(), PLAYER.P1);
   }
 
   public getState(): Readonly<BattleShipState> {
     return this.gameState;
   }
 
-  public apply(game: BattleShipGame, event: BattleShipEvent | null) {
-    if (event === null) {
-      return;
+  public init(): [BattleShipCommand[], BattleShipControl[]] {
+    return [this.initView(), this.initInteraction()]
+  }
+
+  private initView(): BattleShipCommand[] {
+    if (this.gameState.kind !== BattleShipStateKind.SHIP_CRAFTING) {
+      throw new Error(`BattleShip should start in the Ship crafting stage.`);
+    }
+    // Game starts with a ship already available to be placed
+    const size = this.gameState.nextShipSize();
+    let initCmd;
+    if (size) {
+      initCmd = new MakeShipCmd(size);
+    } else {
+      initCmd = new ErrorCmd();
+      initCmd.log = `Player 1 has no ships.`
+    }
+    return [initCmd];
+  }
+
+  private initInteraction(): BattleShipControl[] {
+    return [new EnableSelection(), new EnableRotation(), new EnableMove()];
+  }
+
+  public apply(event:BattleShipEvent, game:BattleShipGame): [BattleShipCommand[], BattleShipControl[]]{
+    let cmds = [] as BattleShipCommand[];
+
+    const beforeState = this.gameState.clone();
+
+    if (event.kind === BSEventKind.SELECT) {
+      cmds = this.processSelect(game);
+    } else if (event.kind === BSEventKind.UNSELECT) {
+      cmds = this.processUnselect(game);
+    } else if (event.kind === BSEventKind.ROTATE) {
+      cmds = this.processRotate(game);
+    } else if (event.kind === BSEventKind.MOVE) {
+      cmds = this.processMove(game, (event as BSMoveEvent).loc, (event as BSMoveEvent).to);
     }
 
-    //this.gameState.apply(event);
+    const controls = this.generateControls(beforeState);
+    
+    return [cmds, controls];
   }
+
+  /**
+   * Generate control signals to manage the BattleShipSensor event triggering
+   * @param beforeState The previous BattleShipState the game was in
+   * @returns List of BattleShipControl, the control signals to manage event handling
+   */
+  private generateControls(beforeState: BattleShipState): BattleShipControl[] {
+    if (beforeState.kind === BattleShipStateKind.SHIP_CRAFTING && beforeState.player === PLAYER.P2
+    && this.gameState.player === PLAYER.P1) {
+      return [new DisableRotation()];
+    }
+
+    if (beforeState.kind === BattleShipStateKind.BATTLE && this.gameState.kind === BattleShipStateKind.GAME_OVER) {
+      return [new DisableSelection(), new DisableUnselection, new DisableMove()];
+    }
+    
+    return [];
+  }
+
+  private processSelect(game:BattleShipGame): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
+    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && !this.gameState.selected) {
+        cmds.push(new SelectShipCmd());
+        this.gameState.selected = true;
+    }
+
+    if (this.gameState.kind === BattleShipStateKind.BATTLE && !this.gameState.selected) {
+      cmds.push(new SelectPinCmd());
+      this.gameState.selected = true;
+    }
+
+    return cmds;
+  }
+
+  private processUnselect(game:BattleShipGame): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
+    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected 
+    && this.gameState.pos !== null) {
+      const player = this.gameState.player;
+      const shipSize = this.gameState.shipSizeSequence[this.gameState.shipSizeIterator];
+      const orientation = this.gameState.orientation;
+      const pos = this.gameState.pos;
+      
+      try {
+        game.settleShip(player, shipSize, orientation, pos);
+      } catch (e) {
+        const errorCmd = new ErrorCmd();
+        errorCmd.log = 'Error trying to settle ship.'
+        + `\nPlayer: ${player}`
+        + `\nSize: ${shipSize}`
+        + `\nOrientation: ${orientation}`
+        + `\nPosition: ${pos}`
+        + `\n\n${e.msg}`;
+        
+        cmds.push(errorCmd);
+        return cmds;
+      }
+
+      cmds.push(new SettleShipCmd());
+      this.gameState.selected = false;
+      let nextSize = this.gameState.nextShipSize();
+      if (nextSize !== null) {
+        cmds.push(new MakeShipCmd(nextSize));
+      } else if (this.gameState.player === PLAYER.P1) {
+        // Restart state now from player 2 perspective
+        cmds.push(new ChangePlayerCmd());
+        this.gameState.reset();
+        this.gameState.player = PLAYER.P2;
+
+        nextSize = this.gameState.nextShipSize()
+        if (nextSize === null) {
+          const p2InitCmd = new ErrorCmd();
+          p2InitCmd.log = `Game settings of Player 2 has no ships.`;
+          cmds.push(p2InitCmd);
+        } else {
+          cmds.push(new MakeShipCmd(nextSize));
+        }
+      } else {
+        throw new Error(`Not implemented. Start game here.`);
+      }
+    }
+
+    if (this.gameState.kind === BattleShipStateKind.BATTLE && this.gameState.selected && this.gameState.pos !== null) {
+      const player = this.gameState.player;
+      const pos = this.gameState.pos;
+      let gameEnded = false;
+
+      try {
+        gameEnded = game.attack(player, pos);
+      } catch (e) {
+        const errorCmd = new ErrorCmd();
+        errorCmd.log = 'Error trying to attack position.'
+        + `\nPlayer: ${player}`
+        + `\nPosition: ${pos}`
+        + `\n\n${e.msg}`;
+        
+        cmds.push(errorCmd);
+        return cmds;
+      }
+
+      if (!gameEnded) {
+        cmds.push(new SettlePinCmd());
+        this.gameState.reset();
+        cmds.push(new ChangePlayerCmd());
+        cmds.push(new MakePinCmd());
+      } else {
+        this.gameState = new GameOverState(player);
+      }
+    }
+
+    return cmds;
+  }
+
+  private processRotate(game:BattleShipGame): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
+    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
+      this.gameState.orientation = this.gameState.orientation === ORIENTATION.VERTICAL ? 
+      ORIENTATION.HORIZONTAL : ORIENTATION.VERTICAL;
+      cmds.push(new RotateShipCmd());
+    }
+    return cmds;
+  }
+
+  private processMove(game:BattleShipGame, loc:BSMoveLoc, to:BoardPosition): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
+    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && loc === BSMoveLoc.SHIP_GRID
+    && this.gameState.selected) {
+      this.gameState.pos = to;
+      cmds.push(new MoveShipCmd(to));
+    }
+
+    if (this.gameState.kind === BattleShipStateKind.BATTLE && loc === BSMoveLoc.PIN_GRID && this.gameState.selected) {
+      this.gameState.pos = to;
+      cmds.push(new MovePinCmd(to));
+    }
+
+    return cmds;
+  }
+}
+
+enum BattleShipCommandKind {
+  CHANGE_PLAYER,
+  MAKE_PIN,
+  MAKE_SHIP,
+  MOVE_PIN,
+  MOVE_SHIP,
+  ROTATE_SHIP,
+  SELECT_PIN,
+  SELECT_SHIP,
+  SETTLE_PIN,
+  SETTLE_SHIP,
+
+  ERROR,
+}
+
+/**
+ * Abstract class for planning interaction of the Presenter with the Scene
+ */
+abstract class BattleShipCommand {
+  public abstract kind:BattleShipCommandKind;
+  public log?: string;
+}
+
+class ChangePlayerCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.CHANGE_PLAYER;
+}
+
+class MakeShipCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.MAKE_SHIP;
+  public size: ShipSize;
+  constructor (size: ShipSize) {
+    super();
+    this.size = size;
+  }
+}
+
+class MakePinCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.MAKE_PIN;
+}
+
+class SelectPinCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.SELECT_PIN;
+}
+
+class SelectShipCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.SELECT_SHIP;
+}
+
+class MovePinCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.MOVE_PIN;
+  public to: BoardPosition;
+  constructor (to: BoardPosition) {
+    super();
+    this.to = to;
+  }
+}
+
+class RotateShipCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.ROTATE_SHIP;
+}
+
+class MoveShipCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.MOVE_SHIP;
+  public to: BoardPosition;
+  constructor (to: BoardPosition) {
+    super();
+    this.to = to;
+  }
+}
+
+class SettlePinCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.SETTLE_PIN;
+}
+
+class SettleShipCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.SETTLE_SHIP;
+}
+
+class ErrorCmd extends BattleShipCommand {
+  public kind = BattleShipCommandKind.ERROR;
+  public log = 'An error occurred.';
 }
 
 /**
@@ -859,47 +1195,149 @@ class BattleShipRules {
  * Translates game-level events to view events.
  */
 class BattleShipPresenter {
-  constructor(gameState: AbstractBattleShipState) {
-
+  private view: BattleShipScene;
+  constructor(scene:BattleShipScene) {
+    this.view = scene;
   }
 
-  public sync(sceneState: BattleShipScene, gameState: BattleShipGame) {
-
+  public update = async (cmds:BattleShipCommand[]) => {
+    for (let cmd of cmds) {
+      if (cmd.log) {
+        console.log(`Command ${cmd.kind}:\n${cmd.log}`)
+      }
+      if (cmd.kind === BattleShipCommandKind.CHANGE_PLAYER) {
+        this.view.changePlayer();
+      } else if (cmd.kind === BattleShipCommandKind.MAKE_SHIP) {
+        this.view.makeShip((cmd as MakeShipCmd).size);
+      } else if (cmd.kind === BattleShipCommandKind.MAKE_PIN) {
+        this.view.makePin();
+      } else if (cmd.kind === BattleShipCommandKind.SELECT_PIN) {
+        this.view.selectPin();
+      } else if (cmd.kind === BattleShipCommandKind.SELECT_SHIP) {
+        this.view.selectShip();
+      } else if (cmd.kind === BattleShipCommandKind.MOVE_PIN) {
+        this.view.movePin((cmd as MovePinCmd).to)
+      } else if (cmd.kind === BattleShipCommandKind.ROTATE_SHIP) {
+        this.view.rotateShip();
+      } else if (cmd.kind === BattleShipCommandKind.MOVE_SHIP) {
+        this.view.moveShip((cmd as MoveShipCmd).to);
+      } else if (cmd.kind === BattleShipCommandKind.SETTLE_PIN) {
+        this.view.settlePin();
+      } else if (cmd.kind === BattleShipCommandKind.SETTLE_SHIP) {
+        this.view.settleShip();
+      }
+    }
   }
 }
+
+enum BattleShipControlKind {
+  ENABLE_SELECTION,
+  DISABLE_SELECTION,
+  ENABLE_UNSELECTION,
+  DISABLE_UNSELECTION,
+  ENABLE_ROTATION,
+  DISABLE_ROTATION,
+  ENABLE_MOVE,
+  DISABLE_MOVE,
+}
+
+/**
+ * Abstract class for planning management of user interactions
+ */
+abstract class BattleShipControl {
+  public abstract kind: BattleShipControlKind;
+  public log?: string;
+}
+
+class EnableSelection extends BattleShipControl {
+  public kind = BattleShipControlKind.ENABLE_SELECTION;
+}
+
+class DisableSelection extends BattleShipControl {
+  public kind = BattleShipControlKind.DISABLE_SELECTION;
+}
+
+class EnableUnselection extends BattleShipControl {
+  public kind = BattleShipControlKind.ENABLE_UNSELECTION;
+}
+
+class DisableUnselection extends BattleShipControl {
+  public kind = BattleShipControlKind.DISABLE_UNSELECTION;
+}
+
+class EnableRotation extends BattleShipControl {
+  public kind = BattleShipControlKind.ENABLE_ROTATION;
+}
+
+class DisableRotation extends BattleShipControl {
+  public kind = BattleShipControlKind.DISABLE_ROTATION;
+}
+
+class EnableMove extends BattleShipControl {
+  public kind = BattleShipControlKind.ENABLE_MOVE;
+}
+
+class DisableMove extends BattleShipControl {
+  public kind = BattleShipControlKind.DISABLE_MOVE;
+}
+
 
 /**
  * Battleship game main class
  */
 class BattleShip {
-  private settings: Readonly<BattleShipSettings>;
-  private game: BattleShipGame;
-  private rules: BattleShipRules;
-  private view: BattleShipScene;
-  private sensor: BattleShipSensor;
-  private viewPresenter: BattleShipPresenter;
+  private game:BattleShipGame;
+  private rules:BattleShipRules;
+  private sensor:BattleShipSensor;
+  private viewPresenter:BattleShipPresenter;
 
-  constructor(scene: THREE.Scene) {
-    this.settings = new BattleShipSettings();
-
-    this.game = new BattleShipGame(this.settings);
-    this.rules = new BattleShipRules(this.settings);
-    this.view = new BattleShipScene(scene);
-    this.sensor = new BattleShipSensor(this.view);
-    this.viewPresenter = new BattleShipPresenter(this.rules.getState());
+  constructor(settings: BattleShipSettings, sensor: BattleShipSensor, presenter: BattleShipPresenter) {
+    
+    this.game = new BattleShipGame(settings);
+    this.rules = new BattleShipRules(settings);
+    
+    this.sensor = sensor;
+    this.viewPresenter = presenter;
+  }
+  
+  public async init() {
+    const [initCmds, initControls] = await this.rules.init();
+    this.viewPresenter.update(initCmds);
+    this.updateSensor(initControls);
   }
 
   /**
-   * Game loop update
-   * 1) Generate game events from raw user input
-   * 2) Update game state from game event occurence following game rules
-   * 3) Synchronize game view with updated state
+   * Event based update
+   * 1) Update game state from interaction event occurence following game rules
+   * 2) Synchronize game view with command signals from game logic
+   * 3) Update event handling with control signals from game logic
    */
-  public update() {
-    //const userEvent = this.sensor.sense(this.view);
-    //this.rules.apply(this.game, userEvent);
-    //this.viewPresenter.sync(this.view);
+  public async update(event:BattleShipEvent) {
+    const [cmds, controls] = await this.rules.apply(event, this.game);
+    this.viewPresenter.update(cmds);
+    this.updateSensor(controls);
   }
+
+  private async updateSensor(controls:BattleShipControl[]) {
+    for (let control of controls) {
+      if (control.log) {
+        console.log(`Control Signal ${control.kind}:\n${control.log}`)
+      }
+
+      if (control.kind === BattleShipControlKind.ENABLE_SELECTION) {
+        this.sensor.selectHandler = (event:BattleShipEvent) => this.update(event);
+      } else if (control.kind === BattleShipControlKind.ENABLE_UNSELECTION) {
+        this.sensor.unselectHandler = (event:BattleShipEvent) => this.update(event);
+      } if (control.kind === BattleShipControlKind.ENABLE_ROTATION) {
+        this.sensor.rotateHandler = (event:BattleShipEvent) => this.update(event);
+      } else if (control.kind === BattleShipControlKind.DISABLE_ROTATION) {
+        this.sensor.rotateHandler = undefined;
+      } else if (control.kind === BattleShipControlKind.ENABLE_MOVE) {
+        this.sensor.moveHandler = (event:BattleShipEvent) => this.update(event);
+      }
+    }
+  }
+
 }
 
 //
@@ -914,35 +1352,39 @@ camera.up = new THREE.Vector3(0, 0, 1);
 camera.lookAt(new THREE.Vector3(0, 0, 0));
 
 //
-// Setup scene
+// Setup scene and event handling
 //
 
 const scene = new THREE.Scene();
-const game = new BattleShip(scene);
+const gameScene = new BattleShipScene(scene);
+const gameEventHandler = new BattleShipSensor(gameScene);
+const gameViewPresenter = new BattleShipPresenter(gameScene);
 
-//
-//  Add light spots to scene
+const gameSettings = new BattleShipSettings() as Readonly<BattleShipSettings>;
+const game = new BattleShip(gameSettings, gameEventHandler, gameViewPresenter);
+game.init();
+
 //
 
 var lights = [];
-lights[0] = new THREE.PointLight(0xffffff, 1, 0);
-lights[1] = new THREE.PointLight(0xffffff, 1, 0);
-lights[2] = new THREE.PointLight(0xffffff, 1, 0);
+lights[ 0 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+lights[ 1 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+lights[ 2 ] = new THREE.PointLight( 0xffffff, 1, 0 );
 
-lights[0].position.set(0, 20, 0);
-lights[1].position.set(10, 20, 10);
-lights[2].position.set(-10, -20, -10);
+lights[ 0 ].position.set( 0, 200, 0 );
+lights[ 1 ].position.set( 100, 200, 100 );
+lights[ 2 ].position.set( - 100, - 200, - 100 );
 
-scene.add(lights[0]);
-scene.add(lights[1]);
-scene.add(lights[2]);
+scene.add( lights[ 0 ] );
+scene.add( lights[ 1 ] );
+scene.add( lights[ 2 ] );
 
 //
 // Add ambient light to scene
 //
 
 let amblight = new THREE.AmbientLight(0x444444);
-scene.add(amblight);
+scene.add(amblight)
 
 //
 // Create orbit controls for observation and resize action
