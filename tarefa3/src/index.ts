@@ -26,8 +26,8 @@ class BattleShipScene {
   private static P1BarrierGridPosition = new THREE.Vector3(-2, -1.26, 7);
   private static P1GridPosition = new THREE.Vector3(-2, -5.25, -0.24);
 
-  private shipsGroup: THREE.Group;
-  private pinsGroup: THREE.Group;
+  public shipsGroup: THREE.Group;
+  public pinsGroup: THREE.Group;
 
   public player1 = new THREE.Group();
   public player2 = new THREE.Group();
@@ -442,11 +442,24 @@ class BattleShipSensor {
   }
 
   private mouseUpEvent(event: MouseEvent): void {
+    this.raycaster.setFromCamera({
+      x: (event.clientX / window.innerWidth) * 2 - 1,
+      y: - (event.clientY / window.innerHeight) * 2 + 1,
+    }, camera);
+
     switch (event.button) {
       case 0:
-        if (!this.selectHandler) return;
+        //if (!this.selectHandler) return;
+
+        const currentShip = this.scene.shipsGroup.children[this.scene.shipsGroup.children.length-1];
+        if (this.raycaster.intersectObject(currentShip).length === 0) {
+          const currentPin = this.scene.pinsGroup.children[this.scene.shipsGroup.children.length-1];
+          if (!currentPin || this.raycaster.intersectObject(currentPin).length === 0) return;
+        }
+
+        console.log("Emitting selecting");
         this.selecting = true;
-        return this.selectHandler(new BSSelectEvent);
+        //return this.selectHandler(new BSSelectEvent);
     }
   }
 
