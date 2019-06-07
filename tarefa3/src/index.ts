@@ -1,5 +1,4 @@
 import THREE from "three";
-import "./controls.js";
 
 //
 // Instantiate THREE js renderer
@@ -277,7 +276,6 @@ class BattleShipScene {
     p1box.position.z = -1;
     player.add(p1box);
 
-    console.log(player);
     return player;
   }
 
@@ -463,7 +461,7 @@ class BattleShipSensor {
   }
 
   private mouseUpEvent(e: MouseEvent): void {
-    if (this.selecting && this.unselectHandler && e.button === 2) {
+    if (this.selecting && this.unselectHandler && e.button === 0) {
       this.selecting = false;
       console.log("Emitting BSUnselectEvent");
       this.unselectHandler(new BSUnselectEvent);
@@ -537,14 +535,14 @@ class ShipPiece {
 }
 
 enum BoardCellKind {
-  WATER,
-  SHIP,
+  WATER = 'WATER',
+  SHIP = 'SHIP',
 }
 
 /**
  * Generic board cell
  */
-abstract class BattleShipBoardCell {
+abstract class AbstractBoardCell {
   public abstract cellKind: BoardCellKind;
   public attacked: boolean = false;
 }
@@ -552,27 +550,31 @@ abstract class BattleShipBoardCell {
 /**
  * Board cell filled with water
  */
-class WaterBoardCell extends BattleShipBoardCell {
-  public cellKind = BoardCellKind.WATER;
+class WaterBoardCell extends AbstractBoardCell {
+  public cellKind:BoardCellKind.WATER;
   constructor() {
     super();
+    this.cellKind = BoardCellKind.WATER;
   }
 }
 
 /**
  * Board cell occupied by a ship
  */
-class ShipBoardCell extends BattleShipBoardCell {
-  public cellKind = BoardCellKind.SHIP;
+class ShipBoardCell extends AbstractBoardCell {
+  public cellKind:BoardCellKind.SHIP;
   public shipId: number;
   public shipPart: number;
 
   constructor(shipId: number, shipPart: number) {
     super();
+    this.cellKind = BoardCellKind.SHIP;
     this.shipId = shipId;
     this.shipPart = shipPart;
   }
 }
+
+type BattleShipBoardCell = WaterBoardCell | ShipBoardCell;
 
 /**
  * Battleship board representation. This representations works both as a pin board
@@ -604,32 +606,32 @@ class BattleShipBoard {
     }
 
     if (ship.orientation === ORIENTATION.HORIZONTAL) {
-      if (y + ship.size >= this.boardSize) {
+      if (y - (ship.size - 1)/2 < 0 || y + (ship.size - 1)/2 >= this.boardSize) {
         throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
-      for (let pos = y; pos < y + ship.size; pos++) {
+      for (let pos = y - (ship.size - 1)/2; pos <= y + (ship.size - 1)/2; pos++) {
         if (this.board[x][pos].cellKind === BoardCellKind.SHIP) {
           throw new Error(`Ship ${ship.id} with size ${ship.size} already occupied.`)
         }
       }
 
-      for (let pos = y; pos < y + ship.size; pos++) {
+      for (let pos = y - (ship.size - 1)/2; pos <= y + (ship.size - 1)/2; pos++) {
         delete this.board[x][pos];
         this.board[x][pos] = new ShipBoardCell(ship.id, pos);
       }
     } else if (ship.orientation === ORIENTATION.VERTICAL) {
-      if (x + ship.size >= this.boardSize) {
+      if (x - (ship.size - 1)/2 < 0 || x + (ship.size - 1)/2 >= this.boardSize) {
         throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
-      for (let pos = x; pos < x + ship.size; pos++) {
+      for (let pos = x - (ship.size - 1)/2; pos <= x + (ship.size - 1)/2; pos++) {
         if (this.board[pos][y].cellKind === BoardCellKind.SHIP) {
           throw new Error(`Ship ${ship.id} with size ${ship.size} already occupied.`)
         }
       }
 
-      for (let pos = x; pos < x + ship.size; pos++) {
+      for (let pos = x - (ship.size - 1)/2; pos <= x + (ship.size - 1)/2; pos++) {
         delete this.board[pos][y];
         this.board[pos][y] = new ShipBoardCell(ship.id, pos);
       }
@@ -655,7 +657,7 @@ class BattleShipBoard {
       throw new Error(`Attack position (${x}, ${y}) already attacked`);
     }
     cell.attacked = true;
-    return cell.cellKind === BoardCellKind.SHIP ? [(cell as ShipBoardCell).shipId, (cell as ShipBoardCell).shipPart]
+    return cell.cellKind === BoardCellKind.SHIP ? [cell.shipId, cell.shipPart]
       : null;
   }
 
@@ -678,8 +680,16 @@ type ShipSize = 1 | 3 | 5;
 class BattleShipSettings {
   public boardSize = 10 as const;
   public playerShipCount = 5 as const;
-  public shipCountByType = [1, 3, 1];
-  public shipSizeByType = [2, 3, 4] as ShipSize[];
+  public shipCountByType = [2, 2, 1];
+  public shipSizeByType = [1, 3, 5] as ShipSize[];
+
+  constructor() {
+    for (let size of this.shipSizeByType) {
+      if (size%2 === 0) {
+        throw new Error(`Ships with even size are not allowed.`);
+      }
+    }
+  }
 
   public buildShipSizeSequence(): ShipSize[] {
     const sizeSequence = [] as ShipSize[];
@@ -823,9 +833,9 @@ class BattleShipGame {
 }
 
 enum BattleShipStateKind {
-  SHIP_CRAFTING,
-  BATTLE,
-  GAME_OVER,
+  SHIP_CRAFTING = 'SHIP CRAFTING',
+  BATTLE = 'BATTLE',
+  GAME_OVER = 'GAME OVER',
 }
 
 /**
@@ -856,7 +866,7 @@ class ShipCraftState implements AbstractBattleShipState {
     this.selected = false;
     this.shipSizeSequence = shipSizeSequence;
     this.shipSizeIterator = 0;
-    this.orientation = ORIENTATION.VERTICAL;
+    this.orientation = ORIENTATION.HORIZONTAL;
     this.pos = null; // Initially the crafted ship is out of the grid
   }
 
@@ -879,7 +889,7 @@ class ShipCraftState implements AbstractBattleShipState {
   public reset() {
     this.selected = false;
     this.shipSizeIterator = 0;
-    this.orientation = ORIENTATION.VERTICAL;
+    this.orientation = ORIENTATION.HORIZONTAL;
     this.pos = null;
   }
 
@@ -973,7 +983,7 @@ class BattleShipRules {
   }
 
   private initInteraction(): BattleShipControl[] {
-    return [new EnableSelection(), new EnableRotation(), new EnableMove()];
+    return [new EnableSelection(), new EnableUnselection(), new EnableRotation(), new EnableMove()];
   }
 
   public apply(event: BattleShipEvent, game: BattleShipGame): [BattleShipCommand[], BattleShipControl[]] {
@@ -982,12 +992,16 @@ class BattleShipRules {
     const beforeState = this.gameState.clone();
 
     if (event.kind === BSEventKind.SELECT) {
+      console.log('Got select event');
       cmds = this.processSelect(game);
     } else if (event.kind === BSEventKind.UNSELECT) {
+      console.log('Got unselect event');
       cmds = this.processUnselect(game);
     } else if (event.kind === BSEventKind.ROTATE) {
+      console.log('Got rotate event');
       cmds = this.processRotate(game);
     } else if (event.kind === BSEventKind.MOVE) {
+      console.log('Got move event');
       cmds = this.processMove(game, (event as BSMoveEvent).loc, (event as BSMoveEvent).to);
     }
 
@@ -1031,78 +1045,88 @@ class BattleShipRules {
 
   private processUnselect(game: BattleShipGame): BattleShipCommand[] {
     const cmds = [] as BattleShipCommand[];
-    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected
-      && this.gameState.pos !== null) {
+    if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
       const player = this.gameState.player;
       const shipSize = this.gameState.shipSizeSequence[this.gameState.shipSizeIterator];
       const orientation = this.gameState.orientation;
       const pos = this.gameState.pos;
 
-      try {
-        game.settleShip(player, shipSize, orientation, pos);
-      } catch (e) {
-        const errorCmd = new ErrorCmd();
-        errorCmd.log = 'Error trying to settle ship.'
-          + `\nPlayer: ${player}`
-          + `\nSize: ${shipSize}`
-          + `\nOrientation: ${orientation}`
-          + `\nPosition: ${pos}`
-          + `\n\n${e.msg}`;
+      this.gameState.selected = false; // Automatically unselect to maintain coherence
 
-        cmds.push(errorCmd);
-        return cmds;
-      }
-
-      cmds.push(new SettleShipCmd());
-      this.gameState.selected = false;
-      let nextSize = this.gameState.nextShipSize();
-      if (nextSize !== null) {
-        cmds.push(new MakeShipCmd(nextSize));
-      } else if (this.gameState.player === PLAYER.P1) {
-        // Restart state now from player 2 perspective
-        cmds.push(new ChangePlayerCmd());
-        this.gameState.reset();
-        this.gameState.player = PLAYER.P2;
-
-        nextSize = this.gameState.nextShipSize()
-        if (nextSize === null) {
-          const p2InitCmd = new ErrorCmd();
-          p2InitCmd.log = `Game settings of Player 2 has no ships.`;
-          cmds.push(p2InitCmd);
-        } else {
-          cmds.push(new MakeShipCmd(nextSize));
-        }
+      if (pos === null) {
+        // No position yet, just lay it back down
+        cmds.push(new SettleShipCmd());
       } else {
-        throw new Error(`Not implemented. Start game here.`);
+        try {
+          game.settleShip(player, shipSize, orientation, pos);
+        } catch (e) {
+          const errorCmd = new ErrorCmd();
+          errorCmd.log = 'Error trying to settle ship.'
+            + `\nPlayer: ${player}`
+            + `\nSize: ${shipSize}`
+            + `\nOrientation: ${orientation}`
+            + `\nPosition: ${pos}`
+            + `\n\n${e.message}`;
+          
+          cmds.push(errorCmd);
+          return cmds;
+        }
+  
+        cmds.push(new SettleShipCmd());
+        let nextSize = this.gameState.nextShipSize();
+        if (nextSize !== null) {
+          cmds.push(new MakeShipCmd(nextSize));
+        } else if (this.gameState.player === PLAYER.P1) {
+          // Restart state now from player 2 perspective
+          cmds.push(new ChangePlayerCmd());
+          this.gameState.reset();
+          this.gameState.player = PLAYER.P2;
+  
+          nextSize = this.gameState.nextShipSize()
+          if (nextSize === null) {
+            const p2InitCmd = new ErrorCmd();
+            p2InitCmd.log = `Game settings of Player 2 has no ships.`;
+            cmds.push(p2InitCmd);
+          } else {
+            cmds.push(new MakeShipCmd(nextSize));
+          }
+          console.log(`Player ${this.gameState.player}\nSize ${nextSize}\n${cmds}`);
+        } else {
+          this.gameState = new BattleState();
+        }
       }
-    }
-
-    if (this.gameState.kind === BattleShipStateKind.BATTLE && this.gameState.selected && this.gameState.pos !== null) {
+    } else if (this.gameState.kind === BattleShipStateKind.BATTLE && this.gameState.selected) {
       const player = this.gameState.player;
       const pos = this.gameState.pos;
       let gameEnded = false;
 
-      try {
-        gameEnded = game.attack(player, pos);
-      } catch (e) {
-        const errorCmd = new ErrorCmd();
-        errorCmd.log = 'Error trying to attack position.'
-          + `\nPlayer: ${player}`
-          + `\nPosition: ${pos}`
-          + `\n\n${e.msg}`;
-
-        cmds.push(errorCmd);
-        return cmds;
-      }
-
-      if (!gameEnded) {
+      if (pos === null) {
+        // No position yet, just lay it back down
         cmds.push(new SettlePinCmd());
-        this.gameState.reset();
-        cmds.push(new ChangePlayerCmd());
-        cmds.push(new MakePinCmd());
+        this.gameState.selected = false;
       } else {
-        this.gameState = new GameOverState(player);
-      }
+        try {
+          gameEnded = game.attack(player, pos);
+        } catch (e) {
+          const errorCmd = new ErrorCmd();
+          errorCmd.log = 'Error trying to attack position.'
+            + `\nPlayer: ${player}`
+            + `\nPosition: ${pos}`
+            + `\n\n${e.message}`;
+  
+          cmds.push(errorCmd);
+          return cmds;
+        }
+  
+        if (!gameEnded) {
+          cmds.push(new SettlePinCmd());
+          this.gameState.reset();
+          cmds.push(new ChangePlayerCmd());
+          cmds.push(new MakePinCmd());
+        } else {
+          this.gameState = new GameOverState(player);
+        }
+      } 
     }
 
     return cmds;
@@ -1136,18 +1160,18 @@ class BattleShipRules {
 }
 
 enum BattleShipCommandKind {
-  CHANGE_PLAYER,
-  MAKE_PIN,
-  MAKE_SHIP,
-  MOVE_PIN,
-  MOVE_SHIP,
-  ROTATE_SHIP,
-  SELECT_PIN,
-  SELECT_SHIP,
-  SETTLE_PIN,
-  SETTLE_SHIP,
+  CHANGE_PLAYER = 'CHANGE PLAYER',
+  MAKE_PIN = 'MAKE PIN',
+  MAKE_SHIP = 'MAKE SHIP',
+  MOVE_PIN = 'MOVE PIN',
+  MOVE_SHIP = 'MOVE SHIP',
+  ROTATE_SHIP = 'ROTATE SHIP',
+  SELECT_PIN = 'SELECT PIN',
+  SELECT_SHIP = 'SELECT SHIP',
+  SETTLE_PIN = 'SETTLE PIN',
+  SETTLE_SHIP = 'SETTLE SHIP',
 
-  ERROR,
+  ERROR = 'ERROR',
 }
 
 /**
@@ -1224,49 +1248,52 @@ class ErrorCmd extends BattleShipCommand {
  */
 class BattleShipPresenter {
   private view: BattleShipScene;
+  private execution: Promise<void>;
   constructor(scene: BattleShipScene) {
     this.view = scene;
+    this.execution = Promise.resolve();
   }
 
   public update = async (cmds: BattleShipCommand[]) => {
     for (let cmd of cmds) {
+      console.log(`Send command request ${cmd.kind}`);
       if (cmd.log) {
         console.log(`Command ${cmd.kind}:\n${cmd.log}`)
       }
       if (cmd.kind === BattleShipCommandKind.CHANGE_PLAYER) {
-        this.view.changePlayer();
+        this.execution = this.execution.then(() => this.view.changePlayer());
       } else if (cmd.kind === BattleShipCommandKind.MAKE_SHIP) {
-        this.view.makeShip((cmd as MakeShipCmd).size);
+        this.execution = this.execution.then(() => this.view.makeShip((cmd as MakeShipCmd).size));
       } else if (cmd.kind === BattleShipCommandKind.MAKE_PIN) {
-        this.view.makePin();
+        this.execution = this.execution.then(() => this.view.makePin());
       } else if (cmd.kind === BattleShipCommandKind.SELECT_PIN) {
-        this.view.selectPin();
+        this.execution = this.execution.then(() => this.view.selectPin());
       } else if (cmd.kind === BattleShipCommandKind.SELECT_SHIP) {
-        this.view.selectShip();
+        this.execution = this.execution.then(() => this.view.selectShip());
       } else if (cmd.kind === BattleShipCommandKind.MOVE_PIN) {
-        this.view.movePin((cmd as MovePinCmd).to)
+        this.execution = this.execution.then(() => this.view.movePin((cmd as MovePinCmd).to));
       } else if (cmd.kind === BattleShipCommandKind.ROTATE_SHIP) {
-        this.view.rotateShip();
+        this.execution = this.execution.then(() => this.view.rotateShip());
       } else if (cmd.kind === BattleShipCommandKind.MOVE_SHIP) {
-        this.view.moveShip((cmd as MoveShipCmd).to);
+        this.execution = this.execution.then(() => this.view.moveShip((cmd as MoveShipCmd).to));
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_PIN) {
-        this.view.settlePin();
+        this.execution = this.execution.then(() => this.view.settlePin());
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_SHIP) {
-        this.view.settleShip();
+        this.execution = this.execution.then(() => this.view.settleShip());
       }
     }
   }
 }
 
 enum BattleShipControlKind {
-  ENABLE_SELECTION,
-  DISABLE_SELECTION,
-  ENABLE_UNSELECTION,
-  DISABLE_UNSELECTION,
-  ENABLE_ROTATION,
-  DISABLE_ROTATION,
-  ENABLE_MOVE,
-  DISABLE_MOVE,
+  ENABLE_SELECTION = 'ENABLE_SELECTION',
+  DISABLE_SELECTION = 'DISABLE_SELECTION',
+  ENABLE_UNSELECTION = 'ENABLE_UNSELECTION',
+  DISABLE_UNSELECTION = 'DISABLE_UNSELECTION',
+  ENABLE_ROTATION = 'ENABLE_ROTATION',
+  DISABLE_ROTATION = 'DISABLE_ROTATION',
+  ENABLE_MOVE = 'ENABLE_MOVE',
+  DISABLE_MOVE = 'DISABLE_MOVE',
 }
 
 /**
@@ -1348,20 +1375,29 @@ class BattleShip {
 
   private async updateSensor(controls: BattleShipControl[]) {
     for (let control of controls) {
+      console.log(`Executing control signal ${control.kind}`);
       if (control.log) {
         console.log(`Control Signal ${control.kind}:\n${control.log}`)
       }
 
       if (control.kind === BattleShipControlKind.ENABLE_SELECTION) {
-        this.sensor.selectHandler = (event: BattleShipEvent) => this.update(event);
+        this.sensor.selectHandler = (event:BattleShipEvent) => this.update(event);
+      } else if (control.kind === BattleShipControlKind.DISABLE_SELECTION) {
+        this.sensor.selectHandler = undefined;
       } else if (control.kind === BattleShipControlKind.ENABLE_UNSELECTION) {
-        this.sensor.unselectHandler = (event: BattleShipEvent) => this.update(event);
-      } if (control.kind === BattleShipControlKind.ENABLE_ROTATION) {
-        this.sensor.rotateHandler = (event: BattleShipEvent) => this.update(event);
+        this.sensor.unselectHandler = (event:BattleShipEvent) => this.update(event);
+      } else if (control.kind === BattleShipControlKind.DISABLE_UNSELECTION) {
+        this.sensor.unselectHandler = undefined;
+      } else if (control.kind === BattleShipControlKind.ENABLE_ROTATION) {
+        this.sensor.rotateHandler = (event:BattleShipEvent) => this.update(event);
       } else if (control.kind === BattleShipControlKind.DISABLE_ROTATION) {
         this.sensor.rotateHandler = undefined;
       } else if (control.kind === BattleShipControlKind.ENABLE_MOVE) {
-        this.sensor.moveHandler = (event: BattleShipEvent) => this.update(event);
+        this.sensor.moveHandler = (event:BattleShipEvent) => this.update(event);
+      } else if (control.kind === BattleShipControlKind.DISABLE_MOVE) {
+        this.sensor.moveHandler = undefined;
+      } else {
+        throw new Error(`Unsupported Control Signal ${control.kind}`);
       }
     }
   }
@@ -1418,8 +1454,8 @@ scene.add(amblight)
 // Create orbit controls for observation and resize action
 //
 
-//let controls = new THREE.OrbitControls(camera);
-//controls.update();
+// let controls = new THREE.OrbitControls(camera);
+// controls.update();
 
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
