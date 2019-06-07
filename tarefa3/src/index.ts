@@ -962,11 +962,11 @@ class BattleShipRules {
     return this.gameState;
   }
 
-  public init(): [BattleShipCommand[], BattleShipControl[]] {
+  public init(): [BattleShipCommand [], BattleShipControl[]] {
     return [this.initView(), this.initInteraction()]
   }
 
-  private initView(): BattleShipCommand[] {
+  private initView(): BattleShipCommand [] {
     if (this.gameState.kind !== BattleShipStateKind.SHIP_CRAFTING) {
       throw new Error(`BattleShip should start in the Ship crafting stage.`);
     }
@@ -986,8 +986,8 @@ class BattleShipRules {
     return [new EnableSelection(), new EnableUnselection(), new EnableRotation(), new EnableMove()];
   }
 
-  public apply(event: BattleShipEvent, game: BattleShipGame): [BattleShipCommand[], BattleShipControl[]] {
-    let cmds = [] as BattleShipCommand[];
+  public apply(event: BattleShipEvent, game: BattleShipGame): [BattleShipCommand [], BattleShipControl[]] {
+    let cmds = [] as BattleShipCommand [];
 
     const beforeState = this.gameState.clone();
 
@@ -1028,8 +1028,8 @@ class BattleShipRules {
     return [];
   }
 
-  private processSelect(game: BattleShipGame): BattleShipCommand[] {
-    const cmds = [] as BattleShipCommand[];
+  private processSelect(game: BattleShipGame): BattleShipCommand [] {
+    const cmds = [] as BattleShipCommand [];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && !this.gameState.selected) {
       cmds.push(new SelectShipCmd());
       this.gameState.selected = true;
@@ -1043,8 +1043,8 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processUnselect(game: BattleShipGame): BattleShipCommand[] {
-    const cmds = [] as BattleShipCommand[];
+  private processUnselect(game: BattleShipGame): BattleShipCommand [] {
+    const cmds = [] as BattleShipCommand [];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
       const player = this.gameState.player;
       const shipSize = this.gameState.shipSizeSequence[this.gameState.shipSizeIterator];
@@ -1132,8 +1132,8 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processRotate(game: BattleShipGame): BattleShipCommand[] {
-    const cmds = [] as BattleShipCommand[];
+  private processRotate(game: BattleShipGame): BattleShipCommand [] {
+    const cmds = [] as BattleShipCommand [];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
       this.gameState.orientation = this.gameState.orientation === ORIENTATION.VERTICAL ?
         ORIENTATION.HORIZONTAL : ORIENTATION.VERTICAL;
@@ -1142,8 +1142,8 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processMove(game: BattleShipGame, loc: BSMoveLoc, to: BoardPosition): BattleShipCommand[] {
-    const cmds = [] as BattleShipCommand[];
+  private processMove(game: BattleShipGame, loc: BSMoveLoc, to: BoardPosition): BattleShipCommand [] {
+    const cmds = [] as BattleShipCommand [];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && loc === BSMoveLoc.SHIP_GRID
       && this.gameState.selected) {
       this.gameState.pos = to;
@@ -1177,70 +1177,98 @@ enum BattleShipCommandKind {
 /**
  * Abstract class for planning interaction of the Presenter with the Scene
  */
-abstract class BattleShipCommand {
+abstract class AbstractCommand {
   public abstract kind: BattleShipCommandKind;
   public log?: string;
 }
 
-class ChangePlayerCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.CHANGE_PLAYER;
+class ChangePlayerCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.CHANGE_PLAYER;
+  constructor () {
+    this.kind = BattleShipCommandKind.CHANGE_PLAYER;
+  }
 }
 
-class MakeShipCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.MAKE_SHIP;
+class MakeShipCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.MAKE_SHIP;
   public size: ShipSize;
   constructor(size: ShipSize) {
-    super();
+    this.kind = BattleShipCommandKind.MAKE_SHIP;
     this.size = size;
   }
 }
 
-class MakePinCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.MAKE_PIN;
+class MakePinCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.MAKE_PIN;
+  constructor () {
+    this.kind = BattleShipCommandKind.MAKE_PIN;
+  }
 }
 
-class SelectPinCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.SELECT_PIN;
+class SelectPinCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.SELECT_PIN;
+  constructor () {
+    this.kind = BattleShipCommandKind.SELECT_PIN;
+  }
 }
 
-class SelectShipCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.SELECT_SHIP;
+class SelectShipCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.SELECT_SHIP;
+  constructor () {
+    this.kind = BattleShipCommandKind.SELECT_SHIP;
+  }
 }
 
-class MovePinCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.MOVE_PIN;
+class MovePinCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.MOVE_PIN;
   public to: BoardPosition;
   constructor(to: BoardPosition) {
-    super();
+    this.kind = BattleShipCommandKind.MOVE_PIN;
     this.to = to;
   }
 }
 
-class RotateShipCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.ROTATE_SHIP;
+class RotateShipCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.ROTATE_SHIP;
+  constructor () {
+    this.kind = BattleShipCommandKind.ROTATE_SHIP;
+  }
 }
 
-class MoveShipCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.MOVE_SHIP;
+class MoveShipCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.MOVE_SHIP;
   public to: BoardPosition;
   constructor(to: BoardPosition) {
-    super();
+    this.kind = BattleShipCommandKind.MOVE_SHIP;
     this.to = to;
   }
 }
 
-class SettlePinCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.SETTLE_PIN;
+class SettlePinCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.SETTLE_PIN;
+  constructor () {
+    this.kind = BattleShipCommandKind.SETTLE_PIN;
+  }
 }
 
-class SettleShipCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.SETTLE_SHIP;
+class SettleShipCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.SETTLE_SHIP;
+  constructor () {
+    this.kind = BattleShipCommandKind.SETTLE_SHIP;
+  }
 }
 
-class ErrorCmd extends BattleShipCommand {
-  public kind = BattleShipCommandKind.ERROR;
+class ErrorCmd implements AbstractCommand {
+  public kind: BattleShipCommandKind.ERROR;
   public log = 'An error occurred.';
+  constructor () {
+    this.kind = BattleShipCommandKind.ERROR;
+  }
 }
+
+type BattleShipCommand = ChangePlayerCmd | MakeShipCmd | MakePinCmd | SelectPinCmd 
+| SelectShipCmd | MovePinCmd | RotateShipCmd | MoveShipCmd | SettlePinCmd | SettleShipCmd 
+| ErrorCmd;
 
 /**
  * Class is responsible for synchronizing the scene with the game through the BattleShipScene API.
@@ -1257,13 +1285,14 @@ class BattleShipPresenter {
   public update = async (cmds: BattleShipCommand[]) => {
     for (let cmd of cmds) {
       console.log(`Send command request ${cmd.kind}`);
-      if (cmd.log) {
+      if (cmd.kind === BattleShipCommandKind.ERROR) {
         console.log(`Command ${cmd.kind}:\n${cmd.log}`)
       }
       if (cmd.kind === BattleShipCommandKind.CHANGE_PLAYER) {
         this.execution = this.execution.then(() => this.view.changePlayer());
       } else if (cmd.kind === BattleShipCommandKind.MAKE_SHIP) {
-        this.execution = this.execution.then(() => this.view.makeShip((cmd as MakeShipCmd).size));
+        const size = cmd.size;
+        this.execution = this.execution.then(() => this.view.makeShip(size));
       } else if (cmd.kind === BattleShipCommandKind.MAKE_PIN) {
         this.execution = this.execution.then(() => this.view.makePin());
       } else if (cmd.kind === BattleShipCommandKind.SELECT_PIN) {
@@ -1271,11 +1300,13 @@ class BattleShipPresenter {
       } else if (cmd.kind === BattleShipCommandKind.SELECT_SHIP) {
         this.execution = this.execution.then(() => this.view.selectShip());
       } else if (cmd.kind === BattleShipCommandKind.MOVE_PIN) {
-        this.execution = this.execution.then(() => this.view.movePin((cmd as MovePinCmd).to));
+        const to = cmd.to;
+        this.execution = this.execution.then(() => this.view.movePin(to));
       } else if (cmd.kind === BattleShipCommandKind.ROTATE_SHIP) {
         this.execution = this.execution.then(() => this.view.rotateShip());
       } else if (cmd.kind === BattleShipCommandKind.MOVE_SHIP) {
-        this.execution = this.execution.then(() => this.view.moveShip((cmd as MoveShipCmd).to));
+        const to = cmd.to;
+        this.execution = this.execution.then(() => this.view.moveShip(to));
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_PIN) {
         this.execution = this.execution.then(() => this.view.settlePin());
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_SHIP) {
