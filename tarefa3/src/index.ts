@@ -775,8 +775,29 @@ class BattleShipBoard {
       throw new Error(`Attack position (${x}, ${y}) already attacked`);
     }
     cell.attacked = true;
+    this.debugSummary();
     return cell.cellKind === BoardCellKind.SHIP ? [cell.shipId, cell.shipPart]
       : null;
+  }
+
+  private debugSummary() {
+    console.log('Attacked board summary')
+    for (let y = this.boardSize-1; y >= 0; y--) {
+      const str = []
+      for (let x = 0; x < this.boardSize; x++) {
+        const cell = this.board[x][y];
+        if (cell.cellKind === BoardCellKind.WATER && !cell.attacked) {
+          str.push('.');
+        } else if (cell.cellKind === BoardCellKind.WATER) {
+          str.push('x');
+        } else if (cell.cellKind === BoardCellKind.SHIP && !cell.attacked) {
+          str.push('#');
+        } else {
+          str.push('@');
+        }
+      }
+      console.log(str.join('') + '\n');
+    }
   }
 
   private initBoard() {
@@ -948,6 +969,7 @@ class BattleShipGame {
     }
     return false;
   }
+  
 }
 
 enum BattleShipStateKind {
@@ -1166,7 +1188,7 @@ class BattleShipRules {
       const orientation = this.gameState.orientation;
       const pos = this.gameState.pos;
 
-      this.gameState.selected = false; // Automatically unselect to maintain coherence
+      this.gameState.selected = false; // Automatically unselect to maintain coherence on UX
 
       if (pos === null) {
         // No position yet, just lay it back down
@@ -1218,6 +1240,8 @@ class BattleShipRules {
       const pos = this.gameState.pos;
       let gameEnded = false;
 
+      this.gameState.selected = false; // Automatically unselect to maintain coherence on UX
+
       if (pos === null) {
         // No position yet, just lay it back down
         cmds.push(new SettlePinCmd());
@@ -1240,6 +1264,7 @@ class BattleShipRules {
           cmds.push(new SettlePinCmd());
           this.gameState.reset();
           cmds.push(new ChangePlayerCmd());
+          this.gameState.player = this.gameState.player === PLAYER.P1 ? PLAYER.P2 : PLAYER.P1;
           cmds.push(new MakePinCmd());
         } else {
           this.gameState = new GameOverState(player);
