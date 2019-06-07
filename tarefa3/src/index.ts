@@ -162,11 +162,17 @@ class BattleShipScene {
         color: 0xFF0000,
         side: THREE.DoubleSide,
       })
-    )
+    );
 
-    const curP = this.currentPlayer().children;
-    pin.position.copy(curP[curP.length - 1].position);
+    pin.position.x = 7.5;
+    pin.position.y = -9;
+    pin.position.z = -0.24;
 
+    if (!this.firstPlayer) {
+      pin.position.copy(new THREE.Matrix4()
+        .makeRotationZ(Math.PI)
+        .multiplyVector3(pin.position));
+    }
     this.pinsGroup.add(pin);
   }
 
