@@ -1007,16 +1007,12 @@ class BattleShipRules {
     const beforeState = this.gameState.clone();
 
     if (event.kind === BSEventKind.SELECT) {
-      console.log('Got select event');
       cmds = this.processSelect(game);
     } else if (event.kind === BSEventKind.UNSELECT) {
-      console.log('Got unselect event');
       cmds = this.processUnselect(game);
     } else if (event.kind === BSEventKind.ROTATE) {
-      console.log('Got rotate event');
       cmds = this.processRotate(game);
     } else if (event.kind === BSEventKind.MOVE) {
-      console.log('Got move event');
       cmds = this.processMove(game, (event as BSMoveEvent).loc, (event as BSMoveEvent).to);
     }
 
@@ -1108,6 +1104,7 @@ class BattleShipRules {
           console.log(`Player ${this.gameState.player}\nSize ${nextSize}\n${cmds}`);
         } else {
           this.gameState = new BattleState();
+          cmds.push(new MakePinCmd());
         }
       }
     } else if (this.gameState.kind === BattleShipStateKind.BATTLE && this.gameState.selected) {
