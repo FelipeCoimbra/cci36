@@ -29,7 +29,7 @@ class BSAnimation {
   private _finished = false;
 
   constructor(private update: () => boolean,
-              private finish: () => void) {
+    private finish: () => void) {
     this.trigger();
   }
 
@@ -267,7 +267,7 @@ class BattleShipScene {
     const x = Math.abs(currentGridPos.x - (this.firstPlayer ? 0 : 9));
 
     if (z >= 0 && z < 10 && x >= 0 && x < 10)
-      return [Math.floor(z), Math.floor(x)];
+      return [Math.floor(x), Math.floor(z)];
     else
       return null;
   }
@@ -310,7 +310,7 @@ class BattleShipScene {
 
   public hoverCell(cell: [number, number], shipGrid: boolean): void {
     const grid = shipGrid ? this.currentGrid() : this.currentBarrierGrid();
-    const gridCell = grid.children[cell[+!shipGrid] * BOARD_SIZE + cell[+shipGrid]] as THREE.Mesh;
+    const gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0, 0x22, 0x22);
 
     if (this.hoveredCell) {
@@ -322,7 +322,7 @@ class BattleShipScene {
   }
 
   public clearCell(cell: [number, number], shipGrid: boolean): void {
-    const pos = [cell[+!shipGrid], cell[+shipGrid]];
+    const pos = cell;
     const grid = shipGrid ? this.currentGrid() : this.currentBarrierGrid();
     const gridCell = grid.children[pos[0] * BOARD_SIZE + pos[1]] as THREE.Mesh;
     const oldMat = ((pos[0] + pos[1]) & 1) === 0 ? BLACK_MATERIAL : WHITE_MATERIAL;
@@ -441,8 +441,8 @@ class BattleShipScene {
 
     const size = 9 / BOARD_SIZE;
 
-    barGridPos.z += pos[0] * size;
-    barGridPos.x += pos[1] * size;
+    barGridPos.x += pos[0] * size;
+    barGridPos.z += pos[1] * size;
     barGridPos.y = -2.50;
 
     if (!this.firstPlayer) {
@@ -666,7 +666,7 @@ abstract class AbstractBoardCell {
  * Board cell filled with water
  */
 class WaterBoardCell extends AbstractBoardCell {
-  public cellKind:BoardCellKind.WATER;
+  public cellKind: BoardCellKind.WATER;
   constructor() {
     super();
     this.cellKind = BoardCellKind.WATER;
@@ -677,7 +677,7 @@ class WaterBoardCell extends AbstractBoardCell {
  * Board cell occupied by a ship
  */
 class ShipBoardCell extends AbstractBoardCell {
-  public cellKind:BoardCellKind.SHIP;
+  public cellKind: BoardCellKind.SHIP;
   public shipId: number;
   public shipPart: number;
 
@@ -721,35 +721,35 @@ class BattleShipBoard {
     }
 
     if (ship.orientation === ORIENTATION.VERTICAL) {
-      if (y - (ship.size - 1)/2 < 0 || y + (ship.size - 1)/2 >= this.boardSize) {
+      if (y - (ship.size - 1) / 2 < 0 || y + (ship.size - 1) / 2 >= this.boardSize) {
         throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
-      for (let pos = y - (ship.size - 1)/2; pos <= y + (ship.size - 1)/2; pos++) {
+      for (let pos = y - (ship.size - 1) / 2; pos <= y + (ship.size - 1) / 2; pos++) {
         const cell = this.board[x][pos];
         if (cell.cellKind === BoardCellKind.SHIP) {
-          throw new Error(`Ship ${ship.id} with size ${ship.size} tried to settle in cell `+
-          `occupied by ship ${cell.shipId}.`)
+          throw new Error(`Ship ${ship.id} with size ${ship.size} tried to settle in cell ` +
+            `occupied by ship ${cell.shipId}.`)
         }
       }
 
-      for (let pos = y - (ship.size - 1)/2; pos <= y + (ship.size - 1)/2; pos++) {
+      for (let pos = y - (ship.size - 1) / 2; pos <= y + (ship.size - 1) / 2; pos++) {
         delete this.board[x][pos];
         this.board[x][pos] = new ShipBoardCell(ship.id, pos);
       }
     } else if (ship.orientation === ORIENTATION.HORIZONTAL) {
-      if (x - (ship.size - 1)/2 < 0 || x + (ship.size - 1)/2 >= this.boardSize) {
+      if (x - (ship.size - 1) / 2 < 0 || x + (ship.size - 1) / 2 >= this.boardSize) {
         throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
-      for (let pos = x - (ship.size - 1)/2; pos <= x + (ship.size - 1)/2; pos++) {
+      for (let pos = x - (ship.size - 1) / 2; pos <= x + (ship.size - 1) / 2; pos++) {
         const cell = this.board[pos][y];
         if (cell.cellKind === BoardCellKind.SHIP) {
-          throw new Error(`Ship ${ship.id} with size ${ship.size} tried to settle in cell `+
-          `occupied by ship ${cell.shipId}.`);
+          throw new Error(`Ship ${ship.id} with size ${ship.size} tried to settle in cell ` +
+            `occupied by ship ${cell.shipId}.`);
         }
       }
-      for (let pos = x - (ship.size - 1)/2; pos <= x + (ship.size - 1)/2; pos++) {
+      for (let pos = x - (ship.size - 1) / 2; pos <= x + (ship.size - 1) / 2; pos++) {
         delete this.board[pos][y];
         this.board[pos][y] = new ShipBoardCell(ship.id, pos);
       }
@@ -803,7 +803,7 @@ class BattleShipSettings {
 
   constructor() {
     for (let size of this.shipSizeByType) {
-      if (size%2 === 0) {
+      if (size % 2 === 0) {
         throw new Error(`Ships with even size are not allowed.`);
       }
     }
@@ -1081,11 +1081,11 @@ class BattleShipRules {
     return this.gameState;
   }
 
-  public init(): [BattleShipCommand [], BattleShipControl[]] {
+  public init(): [BattleShipCommand[], BattleShipControl[]] {
     return [this.initView(), this.initInteraction()]
   }
 
-  private initView(): BattleShipCommand [] {
+  private initView(): BattleShipCommand[] {
     if (this.gameState.kind !== BattleShipStateKind.SHIP_CRAFTING) {
       throw new Error(`BattleShip should start in the Ship crafting stage.`);
     }
@@ -1105,8 +1105,8 @@ class BattleShipRules {
     return [new EnableSelection(), new EnableUnselection(), new EnableRotation(), new EnableMove()];
   }
 
-  public apply(event: BattleShipEvent, game: BattleShipGame): [BattleShipCommand [], BattleShipControl[]] {
-    let cmds = [] as BattleShipCommand [];
+  public apply(event: BattleShipEvent, game: BattleShipGame): [BattleShipCommand[], BattleShipControl[]] {
+    let cmds = [] as BattleShipCommand[];
 
     const beforeState = this.gameState.clone();
 
@@ -1143,8 +1143,8 @@ class BattleShipRules {
     return [];
   }
 
-  private processSelect(game: BattleShipGame): BattleShipCommand [] {
-    const cmds = [] as BattleShipCommand [];
+  private processSelect(game: BattleShipGame): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && !this.gameState.selected) {
       cmds.push(new SelectShipCmd());
       this.gameState.selected = true;
@@ -1158,8 +1158,8 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processUnselect(game: BattleShipGame): BattleShipCommand [] {
-    const cmds = [] as BattleShipCommand [];
+  private processUnselect(game: BattleShipGame): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
       const player = this.gameState.player;
       const shipSize = this.gameState.shipSizeSequence[this.gameState.shipSizeIterator - 1]; // Current size
@@ -1250,8 +1250,8 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processRotate(game: BattleShipGame): BattleShipCommand [] {
-    const cmds = [] as BattleShipCommand [];
+  private processRotate(game: BattleShipGame): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
       this.gameState.orientation = this.gameState.orientation === ORIENTATION.VERTICAL ?
         ORIENTATION.HORIZONTAL : ORIENTATION.VERTICAL;
@@ -1260,8 +1260,8 @@ class BattleShipRules {
     return cmds;
   }
 
-  private processMove(game: BattleShipGame, loc: BSMoveLoc, to: BoardPosition): BattleShipCommand [] {
-    const cmds = [] as BattleShipCommand [];
+  private processMove(game: BattleShipGame, loc: BSMoveLoc, to: BoardPosition): BattleShipCommand[] {
+    const cmds = [] as BattleShipCommand[];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && loc === BSMoveLoc.SHIP_GRID
       && this.gameState.selected) {
       this.gameState.pos = to;
@@ -1302,7 +1302,7 @@ abstract class AbstractCommand {
 
 class ChangePlayerCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.CHANGE_PLAYER;
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.CHANGE_PLAYER;
   }
 }
@@ -1318,21 +1318,21 @@ class MakeShipCmd implements AbstractCommand {
 
 class MakePinCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.MAKE_PIN;
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.MAKE_PIN;
   }
 }
 
 class SelectPinCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.SELECT_PIN;
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.SELECT_PIN;
   }
 }
 
 class SelectShipCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.SELECT_SHIP;
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.SELECT_SHIP;
   }
 }
@@ -1348,7 +1348,7 @@ class MovePinCmd implements AbstractCommand {
 
 class RotateShipCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.ROTATE_SHIP;
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.ROTATE_SHIP;
   }
 }
@@ -1364,14 +1364,14 @@ class MoveShipCmd implements AbstractCommand {
 
 class SettlePinCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.SETTLE_PIN;
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.SETTLE_PIN;
   }
 }
 
 class SettleShipCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.SETTLE_SHIP;
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.SETTLE_SHIP;
   }
 }
@@ -1379,14 +1379,14 @@ class SettleShipCmd implements AbstractCommand {
 class ErrorCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.ERROR;
   public log = 'An error occurred.';
-  constructor () {
+  constructor() {
     this.kind = BattleShipCommandKind.ERROR;
   }
 }
 
 type BattleShipCommand = ChangePlayerCmd | MakeShipCmd | MakePinCmd | SelectPinCmd
-| SelectShipCmd | MovePinCmd | RotateShipCmd | MoveShipCmd | SettlePinCmd | SettleShipCmd
-| ErrorCmd;
+  | SelectShipCmd | MovePinCmd | RotateShipCmd | MoveShipCmd | SettlePinCmd | SettleShipCmd
+  | ErrorCmd;
 
 /**
  * Class is responsible for synchronizing the scene with the game through the BattleShipScene API.
@@ -1534,19 +1534,19 @@ class BattleShip {
       }
 
       if (control.kind === BattleShipControlKind.ENABLE_SELECTION) {
-        this.sensor.selectHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.selectHandler = (event: BattleShipEvent) => this.update(event);
       } else if (control.kind === BattleShipControlKind.DISABLE_SELECTION) {
         this.sensor.selectHandler = undefined;
       } else if (control.kind === BattleShipControlKind.ENABLE_UNSELECTION) {
-        this.sensor.unselectHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.unselectHandler = (event: BattleShipEvent) => this.update(event);
       } else if (control.kind === BattleShipControlKind.DISABLE_UNSELECTION) {
         this.sensor.unselectHandler = undefined;
       } else if (control.kind === BattleShipControlKind.ENABLE_ROTATION) {
-        this.sensor.rotateHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.rotateHandler = (event: BattleShipEvent) => this.update(event);
       } else if (control.kind === BattleShipControlKind.DISABLE_ROTATION) {
         this.sensor.rotateHandler = undefined;
       } else if (control.kind === BattleShipControlKind.ENABLE_MOVE) {
-        this.sensor.moveHandler = (event:BattleShipEvent) => this.update(event);
+        this.sensor.moveHandler = (event: BattleShipEvent) => this.update(event);
       } else if (control.kind === BattleShipControlKind.DISABLE_MOVE) {
         this.sensor.moveHandler = undefined;
       } else {
