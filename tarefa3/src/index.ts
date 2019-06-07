@@ -288,10 +288,10 @@ class BattleShipScene {
     const defender = this.firstPlayer ? this.player2 : this.player1;
 
     let grid = this.currentBarrierGrid();
-    let gridCell = grid.children[cell[1] * BOARD_SIZE + cell[0]] as THREE.Mesh;
+    let gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0, 0);
 
-    grid = defender.children[3];
+    grid = defender.children[1];
     gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0, 0);
   }
@@ -300,10 +300,10 @@ class BattleShipScene {
     const defender = this.firstPlayer ? this.player2 : this.player1;
 
     let grid = this.currentBarrierGrid();
-    let gridCell = grid.children[cell[1] * BOARD_SIZE + cell[0]] as THREE.Mesh;
+    let gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0xEE, 0);
 
-    grid = defender.children[3];
+    grid = defender.children[1];
     gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0xEE, 0);
   }
@@ -616,8 +616,8 @@ class BattleShipSensor {
  * Player identifier
  */
 enum PLAYER {
-  P1,
-  P2,
+  P1 = 'PLAYER 1',
+  P2 = 'PLAYER 2',
 }
 
 /** Board positions are pairs of integers (x,y). */
@@ -705,6 +705,10 @@ class BattleShipBoard {
     this.board = [] as BattleShipBoardCell[][];
     this.boardSize = boardSize;
     this.initBoard();
+  }
+
+  public status(pos: BoardPosition): Readonly<BattleShipBoardCell> {
+    return this.board[pos[0]][pos[1]];
   }
 
   /**
@@ -820,9 +824,9 @@ type ShipSize = 1 | 3 | 5;
  */
 class BattleShipSettings {
   public boardSize = 10 as const;
-  public playerShipCount = 5 as const;
-  public shipCountByType = [2, 2, 1];
-  public shipSizeByType = [1, 3, 5] as ShipSize[];
+  public playerShipCount = 2 as const;
+  public shipCountByType = [2];
+  public shipSizeByType = [1] as ShipSize[];
 
   constructor() {
     for (let size of this.shipSizeByType) {
@@ -868,6 +872,10 @@ class BattleShipPlayer {
 
   public getShipCount(): Readonly<number> {
     return this.shipCount;
+  }
+
+  public getCellStatus(pos: BoardPosition): Readonly<BattleShipBoardCell> {
+    return this.shipBoard.status(pos);
   }
 
   /**
@@ -971,6 +979,11 @@ class BattleShipGame {
       return attacked.getShipCount() === 0;
     }
     return false;
+  }
+
+  public getCellStatus(player: PLAYER, pos: BoardPosition) {
+    if (player === PLAYER.P1) return this.p1.getCellStatus(pos);
+    else return this.p2.getCellStatus(pos);
   }
   
 }
@@ -1164,6 +1177,11 @@ class BattleShipRules {
     }
 
     if (beforeState.kind === BattleShipStateKind.BATTLE && this.gameState.kind === BattleShipStateKind.GAME_OVER) {
+
+      // Congratulations on the result!
+      const el = document.getElementById('result')!;
+      el.innerText = `${this.gameState.player} is the winner!!`;
+
       return [new DisableSelection(), new DisableUnselection, new DisableMove()];
     }
 
@@ -1249,7 +1267,7 @@ class BattleShipRules {
 
       if (pos === null) {
         // No position yet, just lay it back down
-        cmds.push(new SettlePinCmd());
+        cmds.push(new SettlePinCmd(null));
         this.gameState.selected = false;
       } else {
         try {
@@ -1265,8 +1283,14 @@ class BattleShipRules {
           return cmds;
         }
 
+        const attackCell = game.getCellStatus(
+          this.gameState.player === PLAYER.P1 ? PLAYER.P2 : PLAYER.P1,
+          pos
+        );
+        let damaged = attackCell.cellKind === BoardCellKind.SHIP;
+
         if (!gameEnded) {
-          cmds.push(new SettlePinCmd());
+          cmds.push(new SettlePinCmd(pos, damaged));
           this.gameState.reset();
           cmds.push(new ChangePlayerCmd());
           this.gameState.player = this.gameState.player === PLAYER.P1 ? PLAYER.P2 : PLAYER.P1;
@@ -1394,8 +1418,12 @@ class MoveShipCmd implements AbstractCommand {
 
 class SettlePinCmd implements AbstractCommand {
   public kind: BattleShipCommandKind.SETTLE_PIN;
-  constructor() {
+  public pos: BoardPosition | null;
+  public damaged?: boolean;
+  constructor(pos: BoardPosition | null, damaged?: boolean) {
     this.kind = BattleShipCommandKind.SETTLE_PIN;
+    this.pos = pos;
+    this.damaged = damaged;
   }
 }
 
@@ -1460,7 +1488,16 @@ class BattleShipPresenter {
           .then(() => this.view.hoverCell(to, true))
           .then(() => this.view.moveShip(to));
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_PIN) {
-        this.execution = this.execution.then(() => this.view.settlePin());
+        const pos = cmd.pos;
+        const damaged = cmd.damaged;
+        this.execution = this.execution
+          .then(() => this.view.settlePin())
+          .then(() => {
+            if (damaged !== undefined && pos !== null) {
+              if (damaged) this.view.attackCell(pos);
+              else this.view.missCell(pos);
+            }
+          });
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_SHIP) {
         this.execution = this.execution.then(() => this.view.settleShip());
       }
