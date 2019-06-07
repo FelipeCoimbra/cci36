@@ -121,7 +121,7 @@ class BattleShipScene {
   public selectPin(): void {
     const pin = lastItem(this.pins);
 
-    pin.position.z += 2;
+    pin.position.y -= 1 - 2 * (+!this.firstPlayer);
   }
 
   public movePin(to: [number, number]): void {
@@ -131,7 +131,7 @@ class BattleShipScene {
 
   public settlePin(): void {
     const pin = lastItem(this.pins);
-    pin.position.z -= 1;
+    pin.position.y += 1 - 2 * (+!this.firstPlayer);
   }
 
   public makeShip(length: ShipSize): void {
@@ -344,10 +344,11 @@ class BattleShipScene {
 
     barGridPos.z += pos[0] * size;
     barGridPos.x += pos[1] * size;
+    barGridPos.y = -2.50;
 
     if (!this.firstPlayer) {
       let matrix = new THREE.Matrix4();
-      matrix.makeRotationX(Math.PI / 2);
+      matrix.makeRotationZ(Math.PI);
       matrix.multiplyVector3(barGridPos);
     }
 
@@ -421,6 +422,7 @@ class BattleShipSensor {
 
   private raycaster = new THREE.Raycaster();
   private selecting = false;
+  private emitting = false;
   private lastMoveEvent?: BSMoveEvent;
 
   constructor(private scene: BattleShipScene) {
