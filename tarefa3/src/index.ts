@@ -17,6 +17,15 @@ const ANIMATION_STEP = 60 as const;
 
 const lastItem = <T>(xs: T[]): T => xs[xs.length - 1];
 
+const WHITE_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
+  side: THREE.DoubleSide
+});
+const BLACK_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0x000000,
+  side: THREE.DoubleSide
+});
+
 class BSAnimation {
   private _finished = false;
 
@@ -70,6 +79,7 @@ class BattleShipScene {
   }
 
   private firstPlayer: boolean = true;
+  private hoveredCell?: [number, number];
 
   constructor(private scene: THREE.Scene) {
     this.makeBoard();
@@ -108,6 +118,7 @@ class BattleShipScene {
   }
 
   public settleShip(): Promise<void> {
+    if (this.hoveredCell) this.clearCell(this.hoveredCell, true);
     const ship = lastItem(this.ships);
 
     let steps = ANIMATION_STEP / 10;
@@ -148,18 +159,30 @@ class BattleShipScene {
     let steps = ANIMATION_STEP / 10;
     return new Promise(resolve => {
       new BSAnimation(() => {
-        pin.position.y += (10 * delta) / ANIMATION_STEP;
+        pin.position.y -= (10 * delta) / ANIMATION_STEP;
         return --steps > 0;
       }, resolve)
     });
   }
 
-  public movePin(to: [number, number]): void {
+  public movePin(to: [number, number]): Promise<void> {
     const pin = lastItem(this.pins);
-    pin.position.copy(this.barrierGridPosition(to));
+
+    let steps = ANIMATION_STEP / 10;
+    const delta = new THREE.Vector3()
+      .subVectors(this.barrierGridPosition(to), pin.position)
+      .divideScalar(steps);
+
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        pin.position.add(delta);
+        return --steps > 0;
+      }, resolve)
+    })
   }
 
   public settlePin(): Promise<void> {
+    if (this.hoveredCell) this.clearCell(this.hoveredCell, false);
     const pin = lastItem(this.pins);
 
     const delta = 1 - 2 * (+!this.firstPlayer);
@@ -167,7 +190,7 @@ class BattleShipScene {
     let steps = ANIMATION_STEP / 10;
     return new Promise(resolve => {
       new BSAnimation(() => {
-        pin.position.z += (10 * delta) / ANIMATION_STEP;
+        pin.position.y += (10 * delta) / ANIMATION_STEP;
         return --steps > 0;
       }, resolve)
     });
@@ -258,9 +281,55 @@ class BattleShipScene {
     return this.currentPlayer().children[1];
   }
 
-  public currentBarrierGrid(): THREE.Mesh {
-    return this.currentPlayer().children[3] as THREE.Mesh;
+  public currentBarrierGrid(): THREE.Object3D {
+    return this.currentPlayer().children[3];
   }
+
+  public attackCell(cell: [number, number]): void {
+    const defender = this.firstPlayer ? this.player2 : this.player1;
+
+    let grid = this.currentBarrierGrid();
+    let gridCell = grid.children[cell[1] * BOARD_SIZE + cell[0]] as THREE.Mesh;
+    (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0, 0);
+
+    grid = defender.children[3];
+    gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
+    (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0, 0);
+  }
+
+  public missCell(cell: [number, number]): void {
+    const defender = this.firstPlayer ? this.player2 : this.player1;
+
+    let grid = this.currentBarrierGrid();
+    let gridCell = grid.children[cell[1] * BOARD_SIZE + cell[0]] as THREE.Mesh;
+    (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0xEE, 0);
+
+    grid = defender.children[3];
+    gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
+    (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0xEE, 0);
+  }
+
+  public hoverCell(cell: [number, number], shipGrid: boolean): void {
+    const grid = shipGrid ? this.currentGrid() : this.currentBarrierGrid();
+    const gridCell = grid.children[cell[+!shipGrid] * BOARD_SIZE + cell[+shipGrid]] as THREE.Mesh;
+    (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0, 0x22, 0x22);
+
+    if (this.hoveredCell) {
+      console.log(`Clearing hovered cell ${this.hoveredCell}`);
+      this.clearCell(this.hoveredCell, shipGrid);
+    }
+
+    this.hoveredCell = cell;
+  }
+
+  public clearCell(cell: [number, number], shipGrid: boolean): void {
+    const pos = [cell[+!shipGrid], cell[+shipGrid]];
+    const grid = shipGrid ? this.currentGrid() : this.currentBarrierGrid();
+    const gridCell = grid.children[pos[0] * BOARD_SIZE + pos[1]] as THREE.Mesh;
+    const oldMat = ((pos[0] + pos[1]) & 1) === 0 ? BLACK_MATERIAL : WHITE_MATERIAL;
+    (gridCell.material as THREE.MeshBasicMaterial).color.copy(oldMat.color);
+  }
+
   private makeBoard(): void {
     const material1 = new THREE.MeshPhongMaterial({
       color: 0x2121CE,
@@ -334,20 +403,12 @@ class BattleShipScene {
   private makeGrid(): THREE.Group {
     let grid = new THREE.Group();
     let size = 9 / BOARD_SIZE;
-    let white = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.DoubleSide
-    });
-    let black = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      side: THREE.DoubleSide
-    });
 
     for (let i = 0; i != BOARD_SIZE; i++) {
       for (let j = 0; j != BOARD_SIZE; j++) {
         let mesh = new THREE.Mesh(
           new THREE.PlaneBufferGeometry(size, size),
-          ((i + j) & 1) === 0 ? black : white
+          ((i + j) & 1) === 0 ? BLACK_MATERIAL.clone() : WHITE_MATERIAL.clone()
         );
         mesh.position.copy(new THREE.Vector3(9 / BOARD_SIZE * i, 9 / BOARD_SIZE * j));
 
@@ -1353,12 +1414,16 @@ class BattleShipPresenter {
         this.execution = this.execution.then(() => this.view.selectShip());
       } else if (cmd.kind === BattleShipCommandKind.MOVE_PIN) {
         const to = cmd.to;
-        this.execution = this.execution.then(() => this.view.movePin(to));
+        this.execution = this.execution
+          .then(() => this.view.hoverCell(to, false))
+          .then(() => this.view.movePin(to));
       } else if (cmd.kind === BattleShipCommandKind.ROTATE_SHIP) {
         this.execution = this.execution.then(() => this.view.rotateShip());
       } else if (cmd.kind === BattleShipCommandKind.MOVE_SHIP) {
         const to = cmd.to;
-        this.execution = this.execution.then(() => this.view.moveShip(to));
+        this.execution = this.execution
+          .then(() => this.view.hoverCell(to, true))
+          .then(() => this.view.moveShip(to));
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_PIN) {
         this.execution = this.execution.then(() => this.view.settlePin());
       } else if (cmd.kind === BattleShipCommandKind.SETTLE_SHIP) {
