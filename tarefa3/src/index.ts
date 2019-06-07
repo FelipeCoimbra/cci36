@@ -735,7 +735,7 @@ class BattleShipBoard {
 
       for (let pos = y - (ship.size - 1) / 2; pos <= y + (ship.size - 1) / 2; pos++) {
         delete this.board[x][pos];
-        this.board[x][pos] = new ShipBoardCell(ship.id, pos);
+        this.board[x][pos] = new ShipBoardCell(ship.id, pos-y);
       }
     } else if (ship.orientation === ORIENTATION.HORIZONTAL) {
       if (x - (ship.size - 1) / 2 < 0 || x + (ship.size - 1) / 2 >= this.boardSize) {
@@ -751,7 +751,7 @@ class BattleShipBoard {
       }
       for (let pos = x - (ship.size - 1) / 2; pos <= x + (ship.size - 1) / 2; pos++) {
         delete this.board[pos][y];
-        this.board[pos][y] = new ShipBoardCell(ship.id, pos);
+        this.board[pos][y] = new ShipBoardCell(ship.id, pos-x);
       }
     } else {
       // Never reaches
@@ -775,30 +775,32 @@ class BattleShipBoard {
       throw new Error(`Attack position (${x}, ${y}) already attacked`);
     }
     cell.attacked = true;
-    this.debugSummary();
+    // this.debugSummary();
     return cell.cellKind === BoardCellKind.SHIP ? [cell.shipId, cell.shipPart]
       : null;
   }
 
-  private debugSummary() {
-    console.log('Attacked board summary')
-    for (let y = this.boardSize-1; y >= 0; y--) {
-      const str = []
-      for (let x = 0; x < this.boardSize; x++) {
-        const cell = this.board[x][y];
-        if (cell.cellKind === BoardCellKind.WATER && !cell.attacked) {
-          str.push('.');
-        } else if (cell.cellKind === BoardCellKind.WATER) {
-          str.push('x');
-        } else if (cell.cellKind === BoardCellKind.SHIP && !cell.attacked) {
-          str.push('#');
-        } else {
-          str.push('@');
-        }
-      }
-      console.log(str.join('') + '\n');
-    }
-  }
+  // private debugSummary() {
+  //   console.log(`Attacked board summary. Board size ${this.boardSize}`)
+  //   for (let y = 9; y >= 0; y--) {
+  //     const str = []
+  //     for (let x = 0; x < 10; x++) {
+  //       const cell = this.board[x][y];
+  //       if (cell.cellKind === BoardCellKind.WATER && !cell.attacked) {
+  //         str.push('.');
+  //       } else if (cell.cellKind === BoardCellKind.WATER && cell.attacked) {
+  //         str.push('x');
+  //       } else if (cell.cellKind === BoardCellKind.SHIP && !cell.attacked) {
+  //         str.push('#');
+  //       } else if (cell.cellKind === BoardCellKind.SHIP && cell.attacked) {
+  //         str.push('@');
+  //       } else {
+  //         str.push('?');
+  //       }
+  //     }
+  //     console.log(str.join('') + '\n');
+  //   }
+  // }
 
   private initBoard() {
     for (let i = 0; i < this.boardSize; i++) {
@@ -906,13 +908,14 @@ class BattleShipPlayer {
       throw new Error(`Invalid ship id ${shipId}`);
     }
     const ship = this.ships[shipId];
-    if (part < 0 || part >= ship.size) {
+    if (part < -(ship.size - 1)/2 || part > (ship.size - 1)/2) {
       throw new Error(`Damage location is not within ship limits`);
     }
-    if (ship.damaged[part]) {
+    const relativePos = part + ship.size;
+    if (ship.damaged[relativePos]) {
       throw new Error(`Part ${part} of ship ${shipId} is already damaged`);
     }
-    ship.damaged[part] = true;
+    ship.damaged[relativePos] = true;
     ship.damage++;
     if (ship.damage === ship.size) {
       this.shipCount--;
@@ -1077,6 +1080,8 @@ class GameOverState implements AbstractBattleShipState {
   constructor(winningPlayer: PLAYER) {
     this.kind = BattleShipStateKind.GAME_OVER;
     this.player = winningPlayer;
+
+    console.log(`GAME OVER!! PLAYER ${this.player} WINS!!`);
   }
 
   public clone(): GameOverState {
@@ -1414,7 +1419,7 @@ type BattleShipCommand = ChangePlayerCmd | MakeShipCmd | MakePinCmd | SelectPinC
   | ErrorCmd;
 
 /**
- * Class is responsible for synchronizing the scene with the game through the BattleShipScene API.
+ * Class responsible for synchronizing the scene with the game through the BattleShipScene API.
  * Translates game-level events to view events.
  */
 class BattleShipPresenter {
