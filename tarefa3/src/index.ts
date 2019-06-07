@@ -104,7 +104,7 @@ class BattleShipScene {
   public settleShip(): void {
     const ship = lastItem(this.ships);
 
-    ship.position.z -= 1;
+    ship.position.z -= 2;
   }
 
   public moveShip(to: [number, number]): void {
@@ -136,14 +136,21 @@ class BattleShipScene {
 
   public makeShip(length: ShipSize): void {
     const ship = new THREE.Mesh(
-      new THREE.BoxBufferGeometry(0.5, length, 0.5),
-      new THREE.MeshBasicMaterial({
-        color: 0xEEEEEE,
-        side: THREE.DoubleSide
+      new THREE.BoxBufferGeometry(0.5, 0.8 * length, 0.5),
+      new THREE.MeshPhongMaterial({
+        color: 0x00EE00,
+        side: THREE.DoubleSide,
+        shininess: 80
       }));
+    ship.position.x = 7.5;
+    ship.position.y = -9;
+    ship.position.z = -0.24;
 
-    const curP = this.currentPlayer().children;
-    ship.position.copy(curP[curP.length - 1].position);
+    if (!this.firstPlayer) {
+      ship.position.copy(new THREE.Matrix4()
+        .makeRotationZ(Math.PI)
+        .multiplyVector3(ship.position));
+    }
 
     this.shipsGroup.add(ship);
   }
@@ -308,32 +315,35 @@ class BattleShipScene {
 
   private gridPosition(pos: [number, number]): THREE.Vector3 {
     let gridPos = BattleShipScene.P1GridPosition.clone();
+
+    const size = 9 / BOARD_SIZE;
+
+    gridPos.x += pos[0] * size;
+    gridPos.y += pos[1] * size;
+    gridPos.z = 1.76;
+
     if (!this.firstPlayer) {
       let matrix = new THREE.Matrix4();
       matrix.makeRotationZ(Math.PI);
       matrix.multiplyVector3(gridPos);
     }
 
-    const size = 9 / BOARD_SIZE;
-
-    gridPos.x += pos[0] * size;
-    gridPos.y += pos[1] * size;
-
     return gridPos;
   }
 
   private barrierGridPosition(pos: [number, number]): THREE.Vector3 {
     let barGridPos = BattleShipScene.P1BarrierGridPosition.clone();
-    if (!this.firstPlayer) {
-      let matrix = new THREE.Matrix4();
-      matrix.makeRotationX(Math.PI / 2);
-      matrix.multiplyVector3(barGridPos);
-    }
 
     const size = 9 / BOARD_SIZE;
 
     barGridPos.z += pos[0] * size;
     barGridPos.x += pos[1] * size;
+
+    if (!this.firstPlayer) {
+      let matrix = new THREE.Matrix4();
+      matrix.makeRotationX(Math.PI / 2);
+      matrix.multiplyVector3(barGridPos);
+    }
 
     return barGridPos;
   }
@@ -474,16 +484,15 @@ class BattleShipSensor {
       y: - (event.clientY / window.innerHeight) * 2 + 1,
     }, camera);
 
-    const currentShip = this.scene.ships[this.scene.ships.length - 1];
-    if (this.raycaster.intersectObject(currentShip).length === 0) {
-      const currentPin = this.scene.pins[this.scene.pins.length - 1];
-      if (!currentPin || this.raycaster.intersectObject(currentPin).length === 0) return;
-    }
-
-
     switch (event.button) {
       case 0:
         if (!this.selectHandler) return;
+
+        const currentShip = this.scene.ships[this.scene.ships.length - 1];
+        if (this.raycaster.intersectObject(currentShip).length === 0) {
+          const currentPin = this.scene.pins[this.scene.pins.length - 1];
+          if (!currentPin || this.raycaster.intersectObject(currentPin).length === 0) return;
+        }
 
         console.log("Emitting BSSelectEvent");
         this.selecting = true;
@@ -1067,11 +1076,11 @@ class BattleShipRules {
             + `\nOrientation: ${orientation}`
             + `\nPosition: ${pos}`
             + `\n\n${e.message}`;
-          
+
           cmds.push(errorCmd);
           return cmds;
         }
-  
+
         cmds.push(new SettleShipCmd());
         let nextSize = this.gameState.nextShipSize();
         if (nextSize !== null) {
@@ -1081,7 +1090,7 @@ class BattleShipRules {
           cmds.push(new ChangePlayerCmd());
           this.gameState.reset();
           this.gameState.player = PLAYER.P2;
-  
+
           nextSize = this.gameState.nextShipSize()
           if (nextSize === null) {
             const p2InitCmd = new ErrorCmd();
@@ -1113,11 +1122,11 @@ class BattleShipRules {
             + `\nPlayer: ${player}`
             + `\nPosition: ${pos}`
             + `\n\n${e.message}`;
-  
+
           cmds.push(errorCmd);
           return cmds;
         }
-  
+
         if (!gameEnded) {
           cmds.push(new SettlePinCmd());
           this.gameState.reset();
@@ -1126,7 +1135,7 @@ class BattleShipRules {
         } else {
           this.gameState = new GameOverState(player);
         }
-      } 
+      }
     }
 
     return cmds;
