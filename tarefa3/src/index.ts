@@ -96,116 +96,55 @@ class BattleShipScene {
       }, resolve));
   }
 
-  public selectShip(): Promise<void> {
+  public selectShip(): void {
     const ship = lastItem(this.ships);
 
-    let steps = ANIMATION_STEP / 2;
-    const delta = 2 / steps;
-    return new Promise(resolve => {
-      new BSAnimation(() => {
-        ship.position.z += delta;
-        return --steps > 0;
-      }, resolve);
-    })
+    ship.position.z += 2;
   }
 
-  public settleShip(): Promise<void> {
+  public settleShip(): void {
     const ship = lastItem(this.ships);
 
-    let steps = ANIMATION_STEP / 2;
-    const delta = 2 / steps;
-
-    return new Promise(resolve => {
-      new BSAnimation(() => {
-        ship.position.z -= delta;
-        return --steps > 0;
-      }, resolve);
-    });
+    ship.position.z -= 1;
   }
 
-  public moveShip(to: [number, number]): Promise<void> {
+  public moveShip(to: [number, number]): void {
     const ship = lastItem(this.ships);
-    const finalPos = this.gridPosition(to);
-
-    let steps = ANIMATION_STEP / 3;
-    let deltaPos = new THREE.Vector3();
-    deltaPos.subVectors(finalPos, ship.position);
-    deltaPos.divideScalar(steps);
-
-    return new Promise(resolve => {
-      new BSAnimation(() => {
-        ship.position.add(deltaPos);
-        return --steps > 0;
-      }, resolve)
-    });
+    ship.position.copy(this.gridPosition(to));
   }
 
-  public rotateShip(): Promise<void> {
+  public rotateShip(): void {
     const ship = lastItem(this.ships);
 
-    let steps = ANIMATION_STEP / 3;
-    const rotation = Math.PI / (2 * steps);
-
-    return new Promise((resolve) =>
-      new BSAnimation(() => {
-        ship.rotateZ(rotation);
-        return --steps > 0;
-      }, resolve));
+    ship.rotateZ(Math.PI / 2);
   }
 
-  public selectPin(): Promise<void> {
+  public selectPin(): void {
     const pin = lastItem(this.pins);
 
-    let steps = ANIMATION_STEP / 2;
-    const delta = 2 / steps;
-    return new Promise(resolve => {
-      new BSAnimation(() => {
-        pin.position.z += delta;
-        return --steps > 0;
-      }, resolve);
-    })
+    pin.position.z += 2;
   }
 
-  public movePin(to: [number, number]): Promise<void> {
+  public movePin(to: [number, number]): void {
     const pin = lastItem(this.pins);
-    const finalPos = this.barrierGridPosition(to);
-
-    let steps = ANIMATION_STEP / 3;
-    let deltaPos = new THREE.Vector3();
-    deltaPos.subVectors(finalPos, pin.position);
-    deltaPos.divideScalar(steps);
-
-    return new Promise(resolve => {
-      new BSAnimation(() => {
-        pin.position.add(deltaPos);
-        return --steps > 0;
-      }, resolve)
-    });
+    pin.position.copy(this.barrierGridPosition(to));
   }
 
-  public settlePin(): Promise<void> {
+  public settlePin(): void {
     const pin = lastItem(this.pins);
-
-    let steps = ANIMATION_STEP / 3;
-    const delta = 2 / steps;
-    return new Promise(resolve => {
-      new BSAnimation(() => {
-        pin.position.z -= delta;
-        return --steps > 0;
-      }, resolve);
-    })
+    pin.position.z -= 1;
   }
 
   public makeShip(length: ShipSize): void {
     const ship = new THREE.Mesh(
-      new THREE.BoxBufferGeometry(0.5, 0.8 * length, 0.5),
+      new THREE.BoxBufferGeometry(0.5, length, 0.5),
       new THREE.MeshBasicMaterial({
         color: 0xEEEEEE,
         side: THREE.DoubleSide
       }));
-    ship.position.x = 7.5;
-    ship.position.y = -9;
-    ship.position.z = -0.24;
+
+    const curP = this.currentPlayer().children;
+    ship.position.copy(curP[curP.length - 1].position);
 
     this.shipsGroup.add(ship);
   }
@@ -510,9 +449,16 @@ class BattleShipSensor {
         return
       }
 
+      const emit = !this.lastMoveEvent;
+
       this.lastMoveEvent = nextEvent;
-      console.log(`Emitting BSMoveEvent over ${nextEvent.loc} in ${nextEvent.to}`);
-      if (this.moveHandler) this.moveHandler(nextEvent);
+      if (emit) {
+        setTimeout(() => {
+          console.log(`Emitting BSMoveEvent over ${this.lastMoveEvent!.loc} in ${this.lastMoveEvent!.to}`);
+          if (this.moveHandler) this.moveHandler(this.lastMoveEvent!);
+          this.lastMoveEvent = undefined;
+        }, 100);
+      }
     }
   }
 
