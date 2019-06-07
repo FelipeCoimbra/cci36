@@ -10,6 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/three-tds-loader": "^1.1.1",
+    "three-tds-loader": "^1.1.1",
     "three.js": "^0.77.1",
     "ts-loader": "^5.3.3"
   },

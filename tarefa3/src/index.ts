@@ -1,4 +1,5 @@
 import THREE from "three";
+import TDSLoader from 'three-tds-loader';
 
 //
 // Instantiate THREE js renderer
@@ -24,6 +25,16 @@ const BLACK_MATERIAL = new THREE.MeshBasicMaterial({
   color: 0x000000,
   side: THREE.DoubleSide
 });
+
+const ATTACK_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0xEEEE00,
+  side: THREE.DoubleSide,
+})
+
+const MISS_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0xEE0000,
+  side: THREE.DoubleSide,
+})
 
 class BSAnimation {
   private _finished = false;
@@ -55,6 +66,8 @@ class BSAnimation {
   }
 }
 
+type Color = 0 | 1 | 2;
+
 /**
  *  Game scene manager. Manages game visual aspects (geometries, colors) and provides a high level interface
  * for view control.
@@ -78,9 +91,17 @@ class BattleShipScene {
   }
 
   private firstPlayer: boolean = true;
-  private hoveredCell?: [number, number];
+  private hoveredCell?: BoardPosition;
+  private colorMap1: number[][];
+  private colorMap2: number[][];
+  private colorMap1Barrier: number[][];
+  private colorMap2Barrier: number[][];
 
   constructor(private scene: THREE.Scene) {
+    this.colorMap1 = [];
+    this.colorMap2 = [];
+    this.colorMap1Barrier = [];
+    this.colorMap2Barrier = [];
     this.makeBoard();
     this.shipsGroup = new THREE.Group();
     this.pinsGroup = new THREE.Group();
@@ -129,7 +150,7 @@ class BattleShipScene {
     });
   }
 
-  public moveShip(to: [number, number]): Promise<void> {
+  public moveShip(to: BoardPosition): Promise<void> {
     const ship = lastItem(this.ships);
 
     let steps = ANIMATION_STEP / 10;
@@ -164,7 +185,7 @@ class BattleShipScene {
     });
   }
 
-  public movePin(to: [number, number]): Promise<void> {
+  public movePin(to: BoardPosition): Promise<void> {
     const pin = lastItem(this.pins);
 
     let steps = ANIMATION_STEP / 10;
@@ -237,7 +258,7 @@ class BattleShipScene {
     this.pinsGroup.add(pin);
   }
 
-  public locationInGrid(pos: THREE.Vector3): [number, number] | null {
+  public locationInGrid(pos: THREE.Vector3): BoardPosition | null {
     const currentGridPos = new THREE.Vector3()
       .subVectors(pos, this.currentPlayer().position)
       .sub(this.currentGrid().position)
@@ -254,7 +275,7 @@ class BattleShipScene {
       return null;
   }
 
-  public locationInBarrierGrid(pos: THREE.Vector3): [number, number] | null {
+  public locationInBarrierGrid(pos: THREE.Vector3): BoardPosition | null {
     let currentGridPos = new THREE.Vector3()
       .subVectors(pos, this.currentPlayer().position)
       .sub(this.currentGrid().position)
@@ -284,31 +305,39 @@ class BattleShipScene {
     return this.currentPlayer().children[3];
   }
 
-  public attackCell(cell: [number, number]): void {
+  public attackCell(cell: BoardPosition): void {
     const defender = this.firstPlayer ? this.player2 : this.player1;
 
     let grid = this.currentBarrierGrid();
     let gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0, 0);
+    const colorMapBarrier = this.firstPlayer ? this.colorMap1Barrier : this.colorMap2Barrier;
+    colorMapBarrier[cell[0]][cell[1]] = 3;
 
     grid = defender.children[1];
     gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0, 0);
+    const colorMap = this.firstPlayer ? this.colorMap2 : this.colorMap1;
+    colorMap[cell[0]][cell[1]] = 3;
   }
 
-  public missCell(cell: [number, number]): void {
+  public missCell(cell: BoardPosition): void {
     const defender = this.firstPlayer ? this.player2 : this.player1;
 
     let grid = this.currentBarrierGrid();
     let gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0xEE, 0);
+    const colorMapBarrier = this.firstPlayer ? this.colorMap1Barrier : this.colorMap2Barrier;
+    colorMapBarrier[cell[0]][cell[1]] = 2;
 
     grid = defender.children[1];
     gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0xEE, 0xEE, 0);
+    const colorMap = this.firstPlayer ? this.colorMap2 : this.colorMap1;
+    colorMap[cell[0]][cell[1]] = 2;
   }
 
-  public hoverCell(cell: [number, number], shipGrid: boolean): void {
+  public hoverCell(cell: BoardPosition, shipGrid: boolean): void {
     const grid = shipGrid ? this.currentGrid() : this.currentBarrierGrid();
     const gridCell = grid.children[cell[0] * BOARD_SIZE + cell[1]] as THREE.Mesh;
     (gridCell.material as THREE.MeshBasicMaterial).color.setRGB(0, 0x22, 0x22);
@@ -321,12 +350,32 @@ class BattleShipScene {
     this.hoveredCell = cell;
   }
 
-  public clearCell(cell: [number, number], shipGrid: boolean): void {
+  public clearCell(cell: BoardPosition, shipGrid: boolean): void {
     const pos = cell;
     const grid = shipGrid ? this.currentGrid() : this.currentBarrierGrid();
     const gridCell = grid.children[pos[0] * BOARD_SIZE + pos[1]] as THREE.Mesh;
-    const oldMat = ((pos[0] + pos[1]) & 1) === 0 ? BLACK_MATERIAL : WHITE_MATERIAL;
+    const oldMat = this.getMaterial(pos, shipGrid);
     (gridCell.material as THREE.MeshBasicMaterial).color.copy(oldMat.color);
+  }
+
+  public getMaterial(pos: BoardPosition, shipGrid: boolean): THREE.MeshBasicMaterial {
+    let colorMap;
+    if (shipGrid) {
+      colorMap = this.firstPlayer ? this.colorMap1 : this.colorMap2;
+    } else {
+      colorMap = this.firstPlayer ? this.colorMap2Barrier : this.colorMap1Barrier;
+    }
+    switch (colorMap[pos[0]][pos[1]]) {
+      case 0:
+        return BLACK_MATERIAL;
+      case 1:
+        return WHITE_MATERIAL;
+      case 2:
+        return ATTACK_MATERIAL;
+      case 3:
+        return MISS_MATERIAL;
+    }
+    throw new Error(`Invalid color codification for cell ${pos}`);
   }
 
   private makeBoard(): void {
@@ -404,21 +453,34 @@ class BattleShipScene {
     let size = 9 / BOARD_SIZE;
 
     for (let i = 0; i != BOARD_SIZE; i++) {
+      const colorMapRow = [];
       for (let j = 0; j != BOARD_SIZE; j++) {
+        let material;
+        if (((i + j) & 1) === 0) {
+          material = BLACK_MATERIAL.clone()
+          colorMapRow.push(0);
+        } else {
+          material = WHITE_MATERIAL.clone()
+          colorMapRow.push(1);
+        }
         let mesh = new THREE.Mesh(
           new THREE.PlaneBufferGeometry(size, size),
-          ((i + j) & 1) === 0 ? BLACK_MATERIAL.clone() : WHITE_MATERIAL.clone()
+          material
         );
         mesh.position.copy(new THREE.Vector3(9 / BOARD_SIZE * i, 9 / BOARD_SIZE * j));
 
         grid.add(mesh);
       }
+      this.colorMap1.push(colorMapRow);
+      this.colorMap1Barrier.push(colorMapRow);
+      this.colorMap2.push(colorMapRow);
+      this.colorMap2Barrier.push(colorMapRow);
     }
 
     return grid;
   }
 
-  private gridPosition(pos: [number, number]): THREE.Vector3 {
+  private gridPosition(pos: BoardPosition): THREE.Vector3 {
     let gridPos = BattleShipScene.P1GridPosition.clone();
 
     const size = 9 / BOARD_SIZE;
@@ -436,7 +498,7 @@ class BattleShipScene {
     return gridPos;
   }
 
-  private barrierGridPosition(pos: [number, number]): THREE.Vector3 {
+  private barrierGridPosition(pos: BoardPosition): THREE.Vector3 {
     let barGridPos = BattleShipScene.P1BarrierGridPosition.clone();
 
     const size = 9 / BOARD_SIZE;
@@ -486,7 +548,7 @@ class BSUnselectEvent extends BattleShipEvent {
 class BSMoveEvent extends BattleShipEvent {
   public kind = BSEventKind.MOVE;
 
-  constructor(public to: [number, number], public loc: BSMoveLoc) {
+  constructor(public to: BoardPosition, public loc: BSMoveLoc) {
     super();
   }
 
