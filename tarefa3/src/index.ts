@@ -503,8 +503,8 @@ class BSRotateEvent extends BattleShipEvent {
 
 
 const enum ORIENTATION {
-  HORIZONTAL,
-  VERTICAL
+  HORIZONTAL = 'HORIZONTAL',
+  VERTICAL = 'VERTICAL',
 }
 
 type Handler<E extends BattleShipEvent> = (event: E) => void;
@@ -720,14 +720,16 @@ class BattleShipBoard {
       throw new Error(`Ship ${ship.id} position out of board bounds`);
     }
 
-    if (ship.orientation === ORIENTATION.HORIZONTAL) {
+    if (ship.orientation === ORIENTATION.VERTICAL) {
       if (y - (ship.size - 1)/2 < 0 || y + (ship.size - 1)/2 >= this.boardSize) {
         throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
       for (let pos = y - (ship.size - 1)/2; pos <= y + (ship.size - 1)/2; pos++) {
-        if (this.board[x][pos].cellKind === BoardCellKind.SHIP) {
-          throw new Error(`Ship ${ship.id} with size ${ship.size} already occupied.`)
+        const cell = this.board[x][pos];
+        if (cell.cellKind === BoardCellKind.SHIP) {
+          throw new Error(`Ship ${ship.id} with size ${ship.size} tried to settle in cell `+
+          `occupied by ship ${cell.shipId}.`)
         }
       }
 
@@ -735,17 +737,18 @@ class BattleShipBoard {
         delete this.board[x][pos];
         this.board[x][pos] = new ShipBoardCell(ship.id, pos);
       }
-    } else if (ship.orientation === ORIENTATION.VERTICAL) {
+    } else if (ship.orientation === ORIENTATION.HORIZONTAL) {
       if (x - (ship.size - 1)/2 < 0 || x + (ship.size - 1)/2 >= this.boardSize) {
         throw new Error(`Ship ${ship.id} with size ${ship.size} out of bounds.`)
       }
 
       for (let pos = x - (ship.size - 1)/2; pos <= x + (ship.size - 1)/2; pos++) {
-        if (this.board[pos][y].cellKind === BoardCellKind.SHIP) {
-          throw new Error(`Ship ${ship.id} with size ${ship.size} already occupied.`)
+        const cell = this.board[pos][y];
+        if (cell.cellKind === BoardCellKind.SHIP) {
+          throw new Error(`Ship ${ship.id} with size ${ship.size} tried to settle in cell `+
+          `occupied by ship ${cell.shipId}.`);
         }
       }
-
       for (let pos = x - (ship.size - 1)/2; pos <= x + (ship.size - 1)/2; pos++) {
         delete this.board[pos][y];
         this.board[pos][y] = new ShipBoardCell(ship.id, pos);
@@ -981,7 +984,7 @@ class ShipCraftState implements AbstractBattleShipState {
     this.selected = false;
     this.shipSizeSequence = shipSizeSequence;
     this.shipSizeIterator = 0;
-    this.orientation = ORIENTATION.HORIZONTAL;
+    this.orientation = ORIENTATION.VERTICAL;
     this.pos = null; // Initially the crafted ship is out of the grid
   }
 
@@ -997,14 +1000,15 @@ class ShipCraftState implements AbstractBattleShipState {
 
   public nextShipSize(): ShipSize | null {
     if (this.shipSizeIterator === this.shipSizeSequence.length) return null;
-    const size = this.shipSizeSequence[this.shipSizeIterator++];
+    const size = this.shipSizeSequence[this.shipSizeIterator];
+    this.shipSizeIterator++;
     return size;
   }
 
   public reset() {
     this.selected = false;
     this.shipSizeIterator = 0;
-    this.orientation = ORIENTATION.HORIZONTAL;
+    this.orientation = ORIENTATION.VERTICAL;
     this.pos = null;
   }
 
@@ -1158,7 +1162,7 @@ class BattleShipRules {
     const cmds = [] as BattleShipCommand [];
     if (this.gameState.kind === BattleShipStateKind.SHIP_CRAFTING && this.gameState.selected) {
       const player = this.gameState.player;
-      const shipSize = this.gameState.shipSizeSequence[this.gameState.shipSizeIterator];
+      const shipSize = this.gameState.shipSizeSequence[this.gameState.shipSizeIterator - 1]; // Current size
       const orientation = this.gameState.orientation;
       const pos = this.gameState.pos;
 
@@ -1187,6 +1191,7 @@ class BattleShipRules {
         let nextSize = this.gameState.nextShipSize();
         if (nextSize !== null) {
           cmds.push(new MakeShipCmd(nextSize));
+          this.gameState.orientation = ORIENTATION.VERTICAL;
         } else if (this.gameState.player === PLAYER.P1) {
           // Restart state now from player 2 perspective
           cmds.push(new ChangePlayerCmd());
@@ -1201,9 +1206,10 @@ class BattleShipRules {
           } else {
             cmds.push(new MakeShipCmd(nextSize));
           }
-          console.log(`Player ${this.gameState.player}\nSize ${nextSize}\n${cmds}`);
         } else {
+          // Player 2 finished placing his ships, start battle.
           this.gameState = new BattleState();
+          cmds.push(new ChangePlayerCmd());
           cmds.push(new MakePinCmd());
         }
       }
