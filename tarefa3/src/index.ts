@@ -12,7 +12,6 @@ renderer.setClearColor(0x220000, 1);
 document.body.appendChild(renderer.domElement);
 
 const BOARD_SIZE = 10 as const;
-const SHIP_COUNT = [1, 3, 1] as const;
 const ANIMATION_STEP = 60 as const;
 
 const lastItem = <T>(xs: T[]): T => xs[xs.length - 1];
