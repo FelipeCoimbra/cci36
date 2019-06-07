@@ -51,7 +51,8 @@ class BattleShipScene {
   public player1 = new THREE.Group();
   public player2 = new THREE.Group();
 
-  //private moveAnimation?: BSAnimation;
+  private moveAnimations?: BSAnimation;
+  private rotateAnimation?: BSAnimation;
 
   get ships(): {0: THREE.Object3D} & THREE.Object3D[] {
     return this.shipsGroup.children as any;
@@ -153,7 +154,7 @@ class BattleShipScene {
     pin.position.z -= 2;
   }
 
-  public makeShip(length: 2 | 3 | 4): void {
+  public makeShip(length: ShipSize): void {
     const ship = new THREE.Mesh(
       new THREE.BoxBufferGeometry(0.5, 0.8 * length, 0.5),
       new THREE.MeshBasicMaterial({
@@ -176,9 +177,8 @@ class BattleShipScene {
       })
     )
 
-    pin.position.x = 8.5;
-    pin.position.y = 8;
-    pin.position.z = -0.8;
+    const curP = this.currentPlayer().children;
+    pin.position.copy(curP[curP.length - 1].position);
 
     this.pinsGroup.add(pin);
   }
@@ -358,19 +358,6 @@ class BattleShipScene {
 
     return barGridPos;
   }
-
-  //private animate(animation: () => void): void {
-  //  let steps = ANIMATION_STEP;
-
-  //  const animContinuation = () => {
-  //    steps--;
-  //    animation();
-
-  //    if (steps) setTimeout(animContinuation, 8);
-  //  };
-
-  //  animContinuation();
-  //}
 }
 
 const enum BSEventKind {
@@ -695,7 +682,7 @@ class BattleShipBoard {
   }
 }
 
-type ShipSize = 2 | 3 | 4;
+type ShipSize = 1 | 3 | 5;
 
 /**
  * Wrapper class for generic game constants.
