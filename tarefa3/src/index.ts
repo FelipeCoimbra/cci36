@@ -18,24 +18,35 @@ const ANIMATION_STEP = 60 as const;
 
 const lastItem = <T>(xs: T[]): T => xs[xs.length - 1];
 
-//class BSAnimation {
-//  constructor(private update: () => boolean,
-//              private finish: () => void) {
-//    this.trigger();
-//  }
-//
-//  private trigger() {
-//    setTimeout(() => this.run(), 16);
-//  }
-//
-//  private run() {
-//    if (this.update()) {
-//      this.trigger();
-//    } else {
-//      this.finish();
-//    }
-//  }
-//}
+class BSAnimation {
+  private _finished = false;
+
+  constructor(private update: () => boolean,
+              private finish: () => void) {
+    this.trigger();
+  }
+
+  public cancel(): void {
+    this._finished = true;
+    this.finish();
+  }
+
+  public finished(): boolean {
+    return this._finished;
+  }
+
+  private trigger() {
+    setTimeout(() => this.run(), 16);
+  }
+
+  private run() {
+    if (!this._finished && this.update()) {
+      this.trigger();
+    } else {
+      this.cancel();
+    }
+  }
+}
 
 /**
  *  Game scene manager. Manages game visual aspects (geometries, colors) and provides a high level interface
@@ -50,9 +61,6 @@ class BattleShipScene {
 
   public player1 = new THREE.Group();
   public player2 = new THREE.Group();
-
-  private moveAnimations?: BSAnimation;
-  private rotateAnimation?: BSAnimation;
 
   get ships(): {0: THREE.Object3D} & THREE.Object3D[] {
     return this.shipsGroup.children as any;
@@ -73,85 +81,119 @@ class BattleShipScene {
     this.scene.add(this.pinsGroup);
   };
 
-  public changePlayer(): void {
+  public changePlayer(): Promise<void> {
     this.firstPlayer = !this.firstPlayer;
 
-    //const rotation = new THREE.Matrix4();
-    //rotation.makeRotationZ(Math.PI / ANIMATION_STEP);
-
-    //this.animate(() => {
-    //  rotation.multiplyVector3(camera.position);
-    //  camera.lookAt(new THREE.Vector3(0, 0, 0));
-    //});
-
+    let steps = 60;
     const rotation = new THREE.Matrix4();
-    rotation.makeRotationZ(Math.PI);
-    rotation.multiplyVector3(camera.position);
-    camera.lookAt(new THREE.Vector3(0, 0, 0));
+    rotation.makeRotationZ(Math.PI / steps);
+
+    return new Promise((resolve) =>
+      new BSAnimation(() => {
+        camera.position.applyMatrix4(rotation);
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+        return --steps > 0;
+      }, resolve));
   }
 
-  public selectShip(): void {
+  public selectShip(): Promise<void> {
     const ship = lastItem(this.ships);
 
-    //const delta = 2 / ANIMATION_STEP;
-    //this.animate(() => ship.position.z += delta);
-    ship.position.z += 2;
+    let steps = ANIMATION_STEP / 2;
+    const delta = 2 / steps;
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        ship.position.z += delta;
+        return --steps > 0;
+      }, resolve);
+    })
   }
 
-  public settleShip(): void {
+  public settleShip(): Promise<void> {
     const ship = lastItem(this.ships);
 
-    //const delta = 2 / ANIMATION_STEP;
-    //this.animate(() => ship.position.z -= delta);
-    ship.position.z -= 2;
+    let steps = ANIMATION_STEP / 2;
+    const delta = 2 / steps;
+
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        ship.position.z -= delta;
+        return --steps > 0;
+      }, resolve);
+    });
   }
 
-  public moveShip(to: [number, number]): void {
+  public moveShip(to: [number, number]): Promise<void> {
     const ship = lastItem(this.ships);
     const finalPos = this.gridPosition(to);
 
-    //let deltaPos = new THREE.Vector3();
-    //deltaPos.subVectors(finalPos, ship.position);
-    //deltaPos.divideScalar(ANIMATION_STEP);
+    let steps = ANIMATION_STEP / 3;
+    let deltaPos = new THREE.Vector3();
+    deltaPos.subVectors(finalPos, ship.position);
+    deltaPos.divideScalar(steps);
 
-    //this.animate(() => ship.position.add(deltaPos));
-
-    ship.position.copy(finalPos);
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        ship.position.add(deltaPos);
+        return --steps > 0;
+      }, resolve)
+    });
   }
 
-  public rotateShip(): void {
+  public rotateShip(): Promise<void> {
     const ship = lastItem(this.ships);
 
-    //this.animate(() => ship.rotateZ(Math.PI / 120));
-    ship.rotateZ(Math.PI / 2);
+    let steps = ANIMATION_STEP / 3;
+    const rotation = Math.PI / (2 * steps);
+
+    return new Promise((resolve) =>
+      new BSAnimation(() => {
+        ship.rotateZ(rotation);
+        return --steps > 0;
+      }, resolve));
   }
 
-  public selectPin(): void {
+  public selectPin(): Promise<void> {
     const pin = lastItem(this.pins);
 
-    //const delta = 2 / ANIMATION_STEP;
-    //this.animate(() => pin.position.z += delta);
-    pin.position.z += 2;
+    let steps = ANIMATION_STEP / 2;
+    const delta = 2 / steps;
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        pin.position.z += delta;
+        return --steps > 0;
+      }, resolve);
+    })
   }
 
-  public movePin(to: [number, number]): void {
+  public movePin(to: [number, number]): Promise<void> {
     const pin = lastItem(this.pins);
     const finalPos = this.barrierGridPosition(to);
 
-    //let deltaPos = new THREE.Vector3();
-    //deltaPos.subVectors(finalPos, pin.position);
-    //deltaPos.divideScalar(ANIMATION_STEP);
+    let steps = ANIMATION_STEP / 3;
+    let deltaPos = new THREE.Vector3();
+    deltaPos.subVectors(finalPos, pin.position);
+    deltaPos.divideScalar(steps);
 
-    //this.animate(() => pin.position.add(deltaPos));
-    pin.position.copy(finalPos);
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        pin.position.add(deltaPos);
+        return --steps > 0;
+      }, resolve)
+    });
   }
 
-  public settlePin(): void {
+  public settlePin(): Promise<void> {
     const pin = lastItem(this.pins);
 
-    //const delta = 2 / ANIMATION_STEP;
-    //this.animate(() => pin.position.z -= delta);
-    pin.position.z -= 2;
+    let steps = ANIMATION_STEP / 3;
+    const delta = 2 / steps;
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        pin.position.z -= delta;
+        return --steps > 0;
+      }, resolve);
+    })
   }
 
   public makeShip(length: ShipSize): void {
