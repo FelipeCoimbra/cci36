@@ -430,7 +430,7 @@ class BattleShipSensor {
 
   constructor(private scene: BattleShipScene) {
     document.onmousemove = e => this.moveEvent(e);
-    document.onmouseup = () => this.mouseUpEvent();
+    document.onmouseup = e => this.mouseUpEvent(e);
     document.onmousedown = e => this.mouseDownEvent(e);
     document.oncontextmenu = () => false;
   }
@@ -474,8 +474,8 @@ class BattleShipSensor {
     }
   }
 
-  private mouseUpEvent(): void {
-    if (this.selecting && this.unselectHandler) {
+  private mouseUpEvent(e: MouseEvent): void {
+    if (this.selecting && this.unselectHandler && e.button === 2) {
       this.selecting = false;
       console.log("Emitting BSUnselectEvent");
       this.unselectHandler(new BSUnselectEvent);
