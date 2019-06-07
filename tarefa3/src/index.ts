@@ -95,21 +95,44 @@ class BattleShipScene {
       }, resolve));
   }
 
-  public selectShip(): void {
+  public selectShip(): Promise<void> {
     const ship = lastItem(this.ships);
 
-    ship.position.z += 2;
+    let steps = ANIMATION_STEP / 10;
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        ship.position.z += 20 / ANIMATION_STEP;
+        return --steps > 0;
+      }, resolve)
+    });
   }
 
-  public settleShip(): void {
+  public settleShip(): Promise<void> {
     const ship = lastItem(this.ships);
 
-    ship.position.z -= 2;
+    let steps = ANIMATION_STEP / 10;
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        ship.position.z -= 20 / ANIMATION_STEP;
+        return --steps > 0;
+      }, resolve)
+    });
   }
 
-  public moveShip(to: [number, number]): void {
+  public moveShip(to: [number, number]): Promise<void> {
     const ship = lastItem(this.ships);
-    ship.position.copy(this.gridPosition(to));
+
+    let steps = ANIMATION_STEP / 10;
+    const delta = new THREE.Vector3()
+      .subVectors(this.gridPosition(to), ship.position)
+      .divideScalar(steps);
+
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        ship.position.add(delta);
+        return --steps > 0;
+      }, resolve)
+    })
   }
 
   public rotateShip(): void {
@@ -118,10 +141,17 @@ class BattleShipScene {
     ship.rotateZ(Math.PI / 2);
   }
 
-  public selectPin(): void {
+  public selectPin(): Promise<void> {
     const pin = lastItem(this.pins);
 
-    pin.position.y -= 1 - 2 * (+!this.firstPlayer);
+    const delta = 1 - 2 * (+!this.firstPlayer);
+    let steps = ANIMATION_STEP / 10;
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        pin.position.y += (10 * delta) / ANIMATION_STEP;
+        return --steps > 0;
+      }, resolve)
+    });
   }
 
   public movePin(to: [number, number]): void {
@@ -129,9 +159,18 @@ class BattleShipScene {
     pin.position.copy(this.barrierGridPosition(to));
   }
 
-  public settlePin(): void {
+  public settlePin(): Promise<void> {
     const pin = lastItem(this.pins);
-    pin.position.y += 1 - 2 * (+!this.firstPlayer);
+
+    const delta = 1 - 2 * (+!this.firstPlayer);
+
+    let steps = ANIMATION_STEP / 10;
+    return new Promise(resolve => {
+      new BSAnimation(() => {
+        pin.position.z += (10 * delta) / ANIMATION_STEP;
+        return --steps > 0;
+      }, resolve)
+    });
   }
 
   public makeShip(length: ShipSize): void {
@@ -465,15 +504,14 @@ class BattleShipSensor {
         return
       }
 
-      const emit = !this.lastMoveEvent;
+      const emit = !this.lastMoveEvent || !nextEvent.equals(this.lastMoveEvent);
 
       this.lastMoveEvent = nextEvent;
       if (emit) {
         setTimeout(() => {
           console.log(`Emitting BSMoveEvent over ${this.lastMoveEvent!.loc} in ${this.lastMoveEvent!.to}`);
           if (this.moveHandler) this.moveHandler(this.lastMoveEvent!);
-          this.lastMoveEvent = undefined;
-        }, 100);
+        }, 20);
       }
     }
   }
@@ -1280,8 +1318,8 @@ class ErrorCmd implements AbstractCommand {
   }
 }
 
-type BattleShipCommand = ChangePlayerCmd | MakeShipCmd | MakePinCmd | SelectPinCmd 
-| SelectShipCmd | MovePinCmd | RotateShipCmd | MoveShipCmd | SettlePinCmd | SettleShipCmd 
+type BattleShipCommand = ChangePlayerCmd | MakeShipCmd | MakePinCmd | SelectPinCmd
+| SelectShipCmd | MovePinCmd | RotateShipCmd | MoveShipCmd | SettlePinCmd | SettleShipCmd
 | ErrorCmd;
 
 /**
