@@ -11,12 +11,12 @@
   "license": "ISC",
   "dependencies": {
     "three.js": "^0.77.1",
-    "ts-loader": "^5.3.3"
+    "ts-loader": "^9.4.2"
   },
   "devDependencies": {
     "@types/three": "^0.93.31",
     "typescript": "^3.4.5",
-    "webpack": "^4.29.6",
-    "webpack-cli": "^3.2.3"
+    "webpack": "^5.75.0",
+    "webpack-cli": "^5.0.1"
   }
 }
